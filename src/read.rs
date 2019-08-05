@@ -115,7 +115,7 @@ impl<R,> BitRead<R,>
     let bit = (buffer & self.cursor) != 0;
 
     //Advance the cursor.
-    self.cursor >>= 1;
+    self.cursor = self.cursor.wrapping_shr(1,);
 
     //Check the cursor after the read.
     self.check_cursor();
@@ -159,9 +159,9 @@ impl<R,> BitRead<R,>
       to_read -= bits;
 
       //Get the bits into the lower bits of the buffer. 
-      buffer >>= to_read;
+      buffer = buffer.wrapping_shr(to_read as u32,);
       //Advance the cursor as needed.
-      self.cursor >>= bits;
+      self.cursor = self.cursor.wrapping_shr(bits as u32,);
 
       //Check the cursor.
       self.check_cursor();
@@ -179,9 +179,9 @@ impl<R,> BitRead<R,>
       self.inner.consume(1,);
 
       //Read in the new data into the lower bits.
-      buffer ^= self.buffer()? >> (8 - to_read);
+      buffer ^= self.buffer()?.wrapping_shr(8 - to_read as u32,);
       //Advance the cursor for the remaining bits.
-      self.cursor = Self::CURSOR_INIT >> to_read;
+      self.cursor = Self::CURSOR_INIT.wrapping_shr(to_read as u32,);
     }
 
     Ok(buffer)
