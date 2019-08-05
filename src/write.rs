@@ -34,28 +34,28 @@ impl<W,> BitWrite<W,> {
 
 impl<W,> BitWrite<W,>
   where W: Write, {
-  /// Writes the internal 
+  /// Writes the internal buffer as is to the inner writer.
+  #[inline]
   fn flush_buf(&mut self,) -> io::Result<()> {
-    use std::{mem, slice,};
+    use std::slice;
 
-    self.inner.write(
-      slice::from_ref(&mem::replace(&mut self.buffer, 0,),),
-    )?;
+    //Flush the buffer.
+    self.inner.write_all(slice::from_ref(&self.buffer,),)?;
+
+    //Clear the buffer.
+    self.buffer = 0;
 
     Ok(())
   }
-  /// Advances the internal cursor and returns `true` if the cursor is now alligned.
-  fn advance_cursor(&mut self,) -> io::Result<()> {
-    //Advance the cursor.
-    self.cursor >>= 1;
-
-    //If the cursor is aligned, reset the cursor.
-    let aligned = self.cursor == 0;
-    if aligned {
-      self.cursor = Self::CURSOR_INIT;
-
+  /// Checks if the buffer has been filled and if so, flushes and resets the writer state
+  /// for the next byte.
+  fn check_cursor(&mut self,) -> io::Result<()> {
+    //Check if the buffer is filled.
+    if self.cursor == 0 {
       //Flush the buffer.
       self.flush_buf()?;
+      //Reset the cursor for writing.
+      self.cursor = Self::CURSOR_INIT;
     }
 
     Ok(())
@@ -94,8 +94,8 @@ impl<W,> BitWrite<W,>
   /// bits.write_bit(false,);
   /// assert_eq!(bits.to_write(), 6,);
   /// ```
-  pub fn to_write(&self,) -> u32 {
-    let zeros = self.cursor.trailing_zeros();
+  pub fn to_write(&self,) -> u8 {
+    let zeros = self.cursor.trailing_zeros() as u8;
 
     if zeros == 7 { 0 }
     else { zeros + 1 }
@@ -121,9 +121,10 @@ impl<W,> BitWrite<W,>
     if bit { self.buffer |= self.cursor; }
 
     //Advance the cursor.
-    self.advance_cursor()?;
+    self.cursor >>= 1;
 
-    Ok(())
+    //Check the cursor for alignment after the right.
+    self.check_cursor()
   }
   /// Writes the bits in `buffer` to the internal writer.
   /// 
@@ -147,56 +148,57 @@ impl<W,> BitWrite<W,>
   /// assert_eq!(bytes, &[0b0101_1100,],);
   /// ```
   pub fn write_bits(&mut self, mut buffer: u8, bits: u8,) -> io::Result<()> {
-    use std::mem;
-
     assert!(0 < bits && bits <= 8, "0 >= `bits` > 8",);
 
-    let to_write = self.to_write() as u8;
+    //Zero out the upper bits of `buffer`.
+    buffer &= !0 >> (8 - bits);
 
-    if bits < to_write {
-      //The difference between `to_write` and `bits`.
-      let shift = to_write - bits;
+    let mut to_write = self.to_write() as u8;
 
-      //Advance the cursor.
+    //Write the bits in `buffer`.
+    if to_write >= bits {
+      //There is enough space in the buffer for the bits.
+
+      //Get the number of bits left to be written in the buffer.
+      to_write -= bits;
+
+      //Align the bits in `buffer` with the bits to be written into the internal buffer.
+      buffer <<= to_write;
+      //Write only the bits into the internal buffer.
+      self.buffer |= buffer;
+
+      //Advance the cursor as necessary.
       self.cursor >>= bits;
 
-      //Shift the bits in the buffer to allign with the bits to be written.
-      buffer <<= shift;
-
-      //Add the bits to the buffer.
-      self.buffer |= self.buffer ^ buffer;
+      //Check the cursor for alignment after the right.
+      self.check_cursor()
     } else {
-      //The difference between `to_write` and `bits`.
-      let shift = bits - to_write;
+      //There is not enough space in the buffer to store the bits.
 
-      //Add the bits to the buffer.
-      let buf = self.buffer | self.buffer ^ (buffer >> shift);
-      let buf = mem::replace(&mut self.buffer, buf,);
+      //Get the number of bits which will need to be written into the next buffer.
+      to_write = bits - to_write;
 
-      //Flush out the written bits.
-      if let Err(e) = self.flush_buf() {
-        //Reset the buffer.
-        self.buffer = buf;
+      //Write in the first bits.
+      self.buffer |= buffer >> to_write;
+      self.cursor = 0;
 
-        return Err(e);
-      }
+      //Flush the internal buffer.
+      self.flush_buf()?;
 
-      //Set the cursor as needed.
-      self.cursor = Self::CURSOR_INIT >> shift;
+      //Write the remaining bits into the internal buffer.
+      self.buffer = buffer << (8 - to_write);
+      self.cursor = Self::CURSOR_INIT >> to_write;
 
-      //Set the buffer.
-      self.buffer = buffer.wrapping_shl(8 - shift as u32,);
+      Ok(())
     }
-
-    Ok(())
   }
-  /// Returns the inner writer flushing any pending bits in buffer right padded with zeros.
+  /// Returns the inner writer flushing any pending bits in the buffer right padded with
+  /// zeros.
   pub fn into_inner(mut self,) -> Result<W, IntoInnerError<W>> {
-    use std::slice;
-    
+    //If the writer is not aligned flush the buffer.
     if !self.aligned() {
       //Flush the buffer.
-      if let Err(error) = self.inner.write(slice::from_ref(&self.buffer,),) {
+      if let Err(error) = self.flush_buf() {
         return Err(IntoInnerError {
           error,
           inner: self.inner,
@@ -256,7 +258,7 @@ mod tests {
     assert!(bits.write_bit(true,).is_ok(),);
     assert!(bits.write_bit(true,).is_ok(),);
     assert!(bits.write_bit(false,).is_ok(),);
-    assert!(bits.write_bits(0b110, 3,).is_ok(),);
+    assert!(bits.write_bits(0b1011_0110, 3,).is_ok(),);
     assert_eq!(bits.aligned(), false,);
     assert_eq!(bits.to_write(), 2,);
     assert!(bits.into_inner().is_ok(),);

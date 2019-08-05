@@ -8,8 +8,6 @@ use std::io::{self, Write, BufRead,};
 pub struct BitRead<R,> {
   /// The internal reader.
   inner: R,
-  /// The buffer of bits pending reading.
-  buffer: u8,
   /// The cursor of which bit is to be read next.
   cursor: u8,
 }
@@ -23,50 +21,41 @@ impl<R,> BitRead<R,> {
   pub const fn new(inner: R,) -> Self {
     Self {
       inner,
-      buffer: 0,
-      cursor: Self::CURSOR_INIT,
+      cursor: 0,
     }
   }
 }
 
 impl<R,> BitRead<R,>
   where R: BufRead, {
-  /// Advances the internal cursor.
-  fn advance_cursor(&mut self,) {
-    //Advance the cursor.
-    self.cursor >>= 1;
+  /// Gets the byte being read from currently.
+  /// 
+  /// If no byte was currently being read from the cursor will be reset for reading the
+  /// next byte.
+  fn buffer(&mut self,) -> io::Result<u8> {
+    //Get the buffer.
+    let buffer = self.inner.fill_buf()?;
 
-    //If the cursor is aligned, reset the cursor.
-    if self.cursor == 0 { self.cursor = Self::CURSOR_INIT }
-  }
-  /// Reads in the next byte from the reader.
-  fn update_buf(&mut self,) -> io::Result<()> {
-    //Get the next byte.
-    if let Some(byte) = self.inner.fill_buf()?.first() {
-      self.buffer = *byte;
+    match buffer.get(0,).copied() {
+      //Get the buffer.
+      Some(buffer) => {
+        //If the reader is aligned, reset the cursor for reading.
+        if self.aligned() { self.cursor = Self::CURSOR_INIT }
+
+        Ok(buffer)
+      },
+      //EOF reached.
+      None => Err(io::ErrorKind::UnexpectedEof.into()),
     }
-    //Consume the byte.
-    self.inner.consume(1,);
-
-    Ok(())
+  }
+  /// Checks the cursor to determine if the reader is properly aligned and consumes the
+  /// current byte if it is.
+  #[inline]
+  fn check_cursor(&mut self,) {
+    //If the reader is aligned after the read, consume the completed byte.
+    if self.aligned() { self.inner.consume(1,); }
   }
 
-  /// Returns the inner buffer.
-  /// 
-  /// ```rust
-  /// use bitio::BitRead;
-  /// 
-  /// let bytes = &[0b0110_0101][..];
-  /// let mut bits = BitRead::new(bytes,);
-  /// 
-  /// assert_eq!(bits.buffer(), &0,);
-  /// 
-  /// bits.read_bit();
-  /// bits.read_bit();
-  /// assert_eq!(bits.buffer(), &0b0110_0101,);
-  /// ```
-  #[inline]
-  pub const fn buffer(&self,) -> &u8 { &self.buffer }
   /// Returns `true` if the reader is byte aligned.
   /// 
   /// ```rust
@@ -85,7 +74,7 @@ impl<R,> BitRead<R,>
   /// assert_eq!(bits.aligned(), true,);
   /// ```
   #[inline]
-  pub const fn aligned(&self,) -> bool { self.cursor == Self::CURSOR_INIT }
+  pub const fn aligned(&self,) -> bool { self.cursor == 0 }
   /// Returns the number of bits which need to be read before the reader is byte aligned.
   /// 
   /// ```rust
@@ -100,10 +89,10 @@ impl<R,> BitRead<R,>
   /// bits.read_bit();
   /// assert_eq!(bits.to_read(), 6,);
   /// ```
-  pub fn to_read(&self,) -> u32 {
-    let zeros = self.cursor.trailing_zeros();
+  pub fn to_read(&self,) -> u8 {
+    let zeros = self.cursor.trailing_zeros() as u8;
 
-    if zeros == 7 { 0 }
+    if zeros == 8 { 0 }
     else { zeros + 1 }
   }
   /// Reads the next bit from the internal reader.
@@ -119,13 +108,17 @@ impl<R,> BitRead<R,>
   /// assert_eq!(bits.read_bit().ok(), Some(true),);
   /// ```
   pub fn read_bit(&mut self,) -> io::Result<bool> {
-    if self.aligned() { self.update_buf()?; }
+    //Get the buffer byte.
+    let buffer = self.buffer()?;
 
     //Read the bit.
-    let bit = (self.buffer & self.cursor) != 0;
+    let bit = (buffer & self.cursor) != 0;
 
     //Advance the cursor.
-    self.advance_cursor();
+    self.cursor >>= 1;
+
+    //Check the cursor after the read.
+    self.check_cursor();
 
     Ok(bit)
   }
@@ -153,34 +146,45 @@ impl<R,> BitRead<R,>
   pub fn read_bits(&mut self, bits: u8,) -> io::Result<u8> {
     assert!(0 < bits && bits <= 8, "0 <= `bits` > 8",);
     
-    if self.aligned() { self.update_buf()?; }
+    //Get the buffer byte.
+    let mut buffer = self.buffer()?;
+    //Get the number of bits still to be read from this buffer byte.
+    let mut to_read = self.to_read();
 
-    let to_read = self.to_read() as u8;
+    //Move the data into `buffer`.
+    if to_read >= bits {
+      //There are enough bits in the buffer.
 
-    if bits < to_read {
-      //There's enough bits stored in the buffer.
+      //Get the number of bits which will remain in the buffer.
+      to_read -= bits;
 
-      //Advance the cursor.
+      //Get the bits into the lower bits of the buffer. 
+      buffer >>= to_read;
+      //Advance the cursor as needed.
       self.cursor >>= bits;
-      
-      //Get the bits.
-      Ok(self.buffer >> (to_read - bits))
+
+      //Check the cursor.
+      self.check_cursor();
     } else {
-      //The read will empty the buffer.
+      //There are not enough bits in the buffer.
 
-      let shift = bits - to_read;
+      //Get the number of bits which need to be retreived from the next buffer byte.
+      let to_read = bits - to_read;
 
-      //Set the cursor as needed.
-      self.cursor = Self::CURSOR_INIT >> shift;
-      
-      //Read out the current buffer.
-      let buffer = self.buffer.wrapping_shl(shift as u32,);
+      //Make space for the extra bits.
+      buffer <<= to_read;
+      self.cursor = 0;
 
-      //Update the buffer.
-      if shift > 0 { self.update_buf()?; }
+      //Consume the current byte.
+      self.inner.consume(1,);
 
-      Ok(buffer | (self.buffer >> to_read))
+      //Read in the new data into the lower bits.
+      buffer ^= self.buffer()? >> (8 - to_read);
+      //Advance the cursor for the remaining bits.
+      self.cursor = Self::CURSOR_INIT >> to_read;
     }
+
+    Ok(buffer)
   }
   /// Returns the inner reader.
   pub fn into_inner(self,) -> R { self.inner }
@@ -204,8 +208,6 @@ mod tests {
 
   #[test]
   fn test_bit_read() {
-    use std::io::Read;
-
     let bytes = &[0b1001_1101, 0b0110_1001,][..];
     let mut bits = BitRead::new(bytes,);
 
@@ -215,12 +217,9 @@ mod tests {
     assert_eq!(bits.read_bits(4,).ok().map(|x,| x & 0x0f,), Some(0b0111),);
     assert_eq!(bits.aligned(), false,);
     assert_eq!(bits.to_read(), 2,);
+    assert_eq!(bits.read_bits(4,).ok().map(|x,| x & 0x0f,), Some(0b0101),);
 
-    let mut bits = bits.into_inner();
-    let bytes = Some(bytes[1]);
-    let buf = &mut [0; 1];
-    let bits = bits.read(buf,).ok()
-      .map(|_,| buf[0],);
-    assert_eq!(bits, bytes,);
+    let bits = bits.into_inner();
+    assert_eq!(bits, &bytes[1..],);
   }
 }
