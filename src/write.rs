@@ -1,5 +1,5 @@
 //! Author --- daniel.bechaz@gmail.com  
-//! Last Moddified --- 2019-07-24
+//! Last Moddified --- 2019-08-08
 
 use std::{
   fmt,
@@ -161,6 +161,9 @@ impl<W,> BitWrite<W,>
 
     let mut to_write = self.to_write() as u8;
 
+    //If we are byte aligned we have 8 bytes to write.
+    if to_write == 0 { to_write = 8 }
+
     //Write the bits in `buffer`.
     if to_write >= bits {
       //There is enough space in the buffer for the bits.
@@ -257,18 +260,28 @@ mod tests {
 
   #[test]
   fn test_bit_write() {
-    let bytes = &mut [0, 0xAD,][..];
+    let bytes = &mut [0, 0, 0xAD,][..];
     let mut bits = BitWrite::new(&mut bytes[..],);
 
     assert_eq!(bits.aligned(), true,);
+    assert_eq!(bits.to_write(), 0,);
     assert!(bits.write_bit(true,).is_ok(),);
     assert!(bits.write_bit(true,).is_ok(),);
     assert!(bits.write_bit(false,).is_ok(),);
     assert!(bits.write_bits(0b1011_0110, 3,).is_ok(),);
     assert_eq!(bits.aligned(), false,);
     assert_eq!(bits.to_write(), 2,);
+    assert!(bits.write_bits(0, 2,).is_ok(),);
+    assert_eq!(bits.aligned(), true,);
+    assert_eq!(bits.to_write(), 0,);
+    assert!(bits.write_bits(0b1011, 4,).is_ok(),);
+    assert_eq!(bits.aligned(), false,);
+    assert_eq!(bits.to_write(), 4,);
+    assert!(bits.write_bits(0b01, 2,).is_ok(),);
+    assert_eq!(bits.aligned(), false,);
+    assert_eq!(bits.to_write(), 2,);
     assert!(bits.into_inner().is_ok(),);
-    assert_eq!(bytes, &[0b1101_1000, 0xAD,][..],);
+    assert_eq!(bytes, &[0b1101_1000, 0b1011_0100, 0xAD,][..],);
 
     let mut bits = BitWrite::new([0u8; 0].as_mut(),);
     assert_eq!(bits.write_bits(0, 0,).ok(), Some(()),);
