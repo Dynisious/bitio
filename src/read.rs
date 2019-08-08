@@ -48,12 +48,12 @@ impl<R,> BitRead<R,>
       None => Err(io::ErrorKind::UnexpectedEof.into()),
     }
   }
-  /// Checks the cursor to determine if the reader is properly aligned and consumes the
-  /// current byte if it is.
+  /// Checks the cursor to determine if the reader has read all of the current byte and
+  /// if so consumes the current byte.
   #[inline]
   fn check_cursor(&mut self,) {
     //If the reader is aligned after the read, consume the completed byte.
-    if self.aligned() { self.inner.consume(1,); }
+    if self.cursor == 0 { self.inner.consume(1,); }
   }
 
   /// Returns `true` if the reader is byte aligned.
@@ -74,8 +74,8 @@ impl<R,> BitRead<R,>
   /// assert_eq!(bits.aligned(), true,);
   /// ```
   #[inline]
-  pub const fn aligned(&self,) -> bool { self.cursor == 0 }
-  /// Returns the number of bits which need to be read before the reader is byte aligned.
+  pub const fn aligned(&self,) -> bool { self.cursor & 0x7F == 0 }
+  /// Returns the number of bits which need to be read from the current byte.
   /// 
   /// ```rust
   /// use bitio::BitRead;
@@ -199,13 +199,9 @@ impl<R,> BitRead<R,>
 impl<W,> Write for BitRead<W,>
   where W: Write, {
   #[inline]
-  fn write(&mut self, buf: &[u8],) -> io::Result<usize> {
-    self.inner.write(buf,)
-  }
+  fn write(&mut self, buf: &[u8],) -> io::Result<usize> { self.inner.write(buf,) }
   #[inline]
-  fn flush(&mut self,) -> io::Result<()> {
-    self.inner.flush()
-  }
+  fn flush(&mut self,) -> io::Result<()> { self.inner.flush() }
 }
 
 #[cfg(test,)]
