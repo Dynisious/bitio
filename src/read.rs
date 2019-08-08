@@ -132,6 +132,10 @@ impl<R,> BitRead<R,>
   /// 
   /// bits --- The number of bits to read from the range (1..=8).  
   /// 
+  /// # Panics
+  /// 
+  /// If `bits` < 0 or 8 < `bits`
+  /// 
   /// ```rust
   /// use bitio::BitRead;
   /// 
@@ -144,7 +148,9 @@ impl<R,> BitRead<R,>
   /// assert_eq!(bits.read_bits(4,).ok(), Some(0b0001_1001),);
   /// ```
   pub fn read_bits(&mut self, bits: u8,) -> io::Result<u8> {
-    assert!(0 < bits && bits <= 8, "0 <= `bits` > 8",);
+    if bits == 0 { return Ok(0) }
+
+    assert!(0 < bits && bits <= 8, "`bits` < 0 or 8 < `bits`",);
     
     //Get the buffer byte.
     let mut buffer = self.buffer()?;
@@ -221,5 +227,8 @@ mod tests {
 
     let bits = bits.into_inner();
     assert_eq!(bits, &bytes[1..],);
+
+    let mut bits = BitRead::new([0u8; 0].as_ref(),);
+    assert_eq!(bits.read_bits(0,).ok(), Some(0),);
   }
 }

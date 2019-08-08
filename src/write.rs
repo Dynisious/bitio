@@ -133,6 +133,10 @@ impl<W,> BitWrite<W,>
   /// buffer --- The buffer of bits, stored in the lower bits.  
   /// bits --- The number of bits from `buffer` to write.  
   /// 
+  /// # Panics
+  /// 
+  /// If `bits` < 0 or 8 < `bits`
+  /// 
   /// ```rust
   /// use bitio::BitWrite;
   /// 
@@ -148,7 +152,9 @@ impl<W,> BitWrite<W,>
   /// assert_eq!(bytes, &[0b0101_1100,],);
   /// ```
   pub fn write_bits(&mut self, mut buffer: u8, bits: u8,) -> io::Result<()> {
-    assert!(0 < bits && bits <= 8, "0 >= `bits` > 8",);
+    if bits == 0 { return Ok(()) }
+
+    assert!(0 < bits && bits <= 8, "`bits` < 0 or 8 < `bits`",);
 
     //Zero out the upper bits of `buffer`.
     buffer &= !0 >> (8 - bits);
@@ -263,5 +269,8 @@ mod tests {
     assert_eq!(bits.to_write(), 2,);
     assert!(bits.into_inner().is_ok(),);
     assert_eq!(bytes, &[0b1101_1000, 0xAD,][..],);
+
+    let mut bits = BitWrite::new([0u8; 0].as_mut(),);
+    assert_eq!(bits.write_bits(0, 0,).ok(), Some(()),);
   }
 }
