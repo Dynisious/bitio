@@ -1,5 +1,5 @@
 //! Author --- daniel.bechaz@gmail.com  
-//! Last Moddified --- 2019-08-08
+//! Last Moddified --- 2019-08-16
 
 use std::{
   fmt,
@@ -238,6 +238,11 @@ pub struct IntoInnerError<W,> {
 impl<W,> IntoInnerError<W,> {
   /// Returns the inner writer.
   pub fn into_inner(self,) -> W { self.inner }
+}
+
+impl<W,> Into<Error> for IntoInnerError<W,> {
+  #[inline]
+  fn into(self,) -> Error { self.error }
 }
 
 impl<W,> fmt::Display for IntoInnerError<W,>
