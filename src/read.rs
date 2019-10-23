@@ -75,7 +75,8 @@ impl<R,> BitRead<R,>
   /// ```
   #[inline]
   pub const fn aligned(&self,) -> bool { self.cursor & 0x7F == 0 }
-  /// Returns the number of bits which need to be read from the current byte.
+  /// Returns the number of bits which need to be read from the current byte for the
+  /// reader to be byte aligned.
   /// 
   /// ```rust
   /// use bitio::BitRead;
@@ -191,6 +192,13 @@ impl<R,> BitRead<R,>
     }
 
     Ok(buffer)
+  }
+  /// Drops any bytes which need to be read for the reader to be `Byte` alligned.
+  pub fn align(&mut self,) -> io::Result<()> {
+    let to_read = self.to_read();
+
+    self.read_bits(to_read,)?;
+    Ok(())
   }
   /// Returns the inner reader.
   pub fn into_inner(self,) -> R { self.inner }
