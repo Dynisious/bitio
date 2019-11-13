@@ -218,7 +218,8 @@ mod tests {
   use super::*;
 
   #[test]
-  fn test_bit_read() {
+  #[allow(non_snake_case,)]
+  fn test_BitRead() {
     let bytes = &[0b1001_1101, 0b0110_1001,][..];
     let mut bits = BitRead::new(bytes,);
 

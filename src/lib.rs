@@ -7,7 +7,8 @@
 #![feature(const_fn,)]
 
 mod bits;
+mod iter;
 mod read;
 mod write;
 
-pub use self::{bits::*, read::*, write::*,};
+pub use self::{bits::*, iter::*, read::*, write::*,};
