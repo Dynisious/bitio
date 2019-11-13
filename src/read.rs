@@ -1,6 +1,7 @@
 //! Author --- daniel.bechaz@gmail.com  
-//! Last Moddified --- 2019-08-08
+//! Last Moddified --- 2019-11-13
 
+use crate::Bits;
 use std::io::{self, Write, BufRead,};
 
 /// Allows bitwise reads from an inner [`BufRead`](https://doc.rust-lang.org/std/io/trait.BufRead.html).
@@ -59,7 +60,7 @@ impl<R,> BitRead<R,>
   /// Returns `true` if the reader is byte aligned.
   /// 
   /// ```rust
-  /// use bitio::BitRead;
+  /// use bitio::{Bits, BitRead,};
   /// 
   /// let bytes = &[0b0110_0101][..];
   /// let mut bits = BitRead::new(bytes,);
@@ -70,7 +71,7 @@ impl<R,> BitRead<R,>
   /// bits.read_bit();
   /// assert_eq!(bits.aligned(), false,);
   /// 
-  /// bits.read_bits(6,);
+  /// bits.read_bits(Bits::B6,);
   /// assert_eq!(bits.aligned(), true,);
   /// ```
   #[inline]
@@ -90,11 +91,11 @@ impl<R,> BitRead<R,>
   /// bits.read_bit();
   /// assert_eq!(bits.to_read(), 6,);
   /// ```
-  pub fn to_read(&self,) -> u8 {
+  pub fn to_read(&self,) -> Bits {
     let zeros = self.cursor.trailing_zeros() as u8;
 
-    if zeros == 8 { 0 }
-    else { zeros + 1 }
+    if zeros == 8 { Bits::B0 }
+    else { unsafe { std::mem::transmute(zeros + 1,) } }
   }
   /// Reads the next bit from the internal reader.
   /// 
@@ -138,7 +139,7 @@ impl<R,> BitRead<R,>
   /// If `bits` < 0 or 8 < `bits`
   /// 
   /// ```rust
-  /// use bitio::BitRead;
+  /// use bitio::{Bits, BitRead,};
   /// 
   /// let bytes = &[0b0110_0101][..];
   /// let mut bits = BitRead::new(bytes,);
@@ -146,9 +147,9 @@ impl<R,> BitRead<R,>
   /// bits.read_bit();
   /// bits.read_bit();
   /// 
-  /// assert_eq!(bits.read_bits(4,).ok(), Some(0b0001_1001),);
+  /// assert_eq!(bits.read_bits(Bits::B4,).ok(), Some(0b0001_1001),);
   /// ```
-  pub fn read_bits(&mut self, bits: u8,) -> io::Result<u8> {
+  pub fn read_bits(&mut self, bits: Bits,) -> io::Result<u8> {
     if bits == 0 { return Ok(0) }
 
     assert!(0 < bits && bits <= 8, "`bits` < 0 or 8 < `bits`",);
@@ -156,7 +157,7 @@ impl<R,> BitRead<R,>
     //Get the buffer byte.
     let mut buffer = self.buffer()?;
     //Get the number of bits still to be read from this buffer byte.
-    let mut to_read = self.to_read();
+    let mut to_read = self.to_read() as u8;
 
     //Move the data into `buffer`.
     if to_read >= bits {
@@ -224,15 +225,15 @@ mod tests {
     assert_eq!(bits.aligned(), true,);
     assert_eq!(bits.read_bit().ok(), Some(true),);
     assert_eq!(bits.read_bit().ok(), Some(false),);
-    assert_eq!(bits.read_bits(4,).ok().map(|x,| x & 0x0f,), Some(0b0111),);
+    assert_eq!(bits.read_bits(Bits::B4,).ok().map(|x,| x & 0x0f,), Some(0b0111),);
     assert_eq!(bits.aligned(), false,);
-    assert_eq!(bits.to_read(), 2,);
-    assert_eq!(bits.read_bits(4,).ok().map(|x,| x & 0x0f,), Some(0b0101),);
+    assert_eq!(bits.to_read(), Bits::B2,);
+    assert_eq!(bits.read_bits(Bits::B4,).ok().map(|x,| x & 0x0f,), Some(0b0101),);
 
     let bits = bits.into_inner();
     assert_eq!(bits, &bytes[1..],);
 
     let mut bits = BitRead::new([0u8; 0].as_ref(),);
-    assert_eq!(bits.read_bits(0,).ok(), Some(0),);
+    assert_eq!(bits.read_bits(Bits::B0,).ok(), Some(0),);
   }
 }

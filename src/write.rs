@@ -1,6 +1,7 @@
 //! Author --- daniel.bechaz@gmail.com  
-//! Last Moddified --- 2019-08-16
+//! Last Moddified --- 2019-11-13
 
+use crate::Bits;
 use std::{
   fmt,
   io::{self, Read, Write, Error,},
@@ -64,7 +65,7 @@ impl<W,> BitWrite<W,>
   /// Returns `true` if the writer is byte aligned.
   /// 
   /// ```rust
-  /// use bitio::BitWrite;
+  /// use bitio::{Bits, BitWrite,};
   /// 
   /// let bytes = &mut [0][..];
   /// let mut bits = BitWrite::new(bytes,);
@@ -75,7 +76,7 @@ impl<W,> BitWrite<W,>
   /// bits.write_bit(false,);
   /// assert_eq!(bits.aligned(), false,);
   /// 
-  /// bits.write_bits(0, 6,);
+  /// bits.write_bits(0, Bits::B6,);
   /// assert_eq!(bits.aligned(), true,);
   /// ```
   #[inline]
@@ -138,20 +139,20 @@ impl<W,> BitWrite<W,>
   /// If `bits` < 0 or 8 < `bits`
   /// 
   /// ```rust
-  /// use bitio::BitWrite;
+  /// use bitio::{Bits, BitWrite,};
   /// 
   /// let bytes = &mut [0][..];
   /// let mut bits = BitWrite::new(&mut bytes[..],);
   /// 
   /// assert!(bits.write_bit(false,).is_ok(),);
   /// assert!(bits.write_bit(true,).is_ok(),);
-  /// assert!(bits.write_bits(0b0111, 4,).is_ok(),);
+  /// assert!(bits.write_bits(0b0111, Bits::B4,).is_ok(),);
   /// 
   /// bits.into_inner();
   /// 
   /// assert_eq!(bytes, &[0b0101_1100,],);
   /// ```
-  pub fn write_bits(&mut self, mut buffer: u8, bits: u8,) -> io::Result<()> {
+  pub fn write_bits(&mut self, mut buffer: u8, bits: Bits,) -> io::Result<()> {
     if bits == 0 { return Ok(()) }
 
     assert!(0 < bits && bits <= 8, "`bits` < 0 or 8 < `bits`",);
@@ -273,22 +274,22 @@ mod tests {
     assert!(bits.write_bit(true,).is_ok(),);
     assert!(bits.write_bit(true,).is_ok(),);
     assert!(bits.write_bit(false,).is_ok(),);
-    assert!(bits.write_bits(0b1011_0110, 3,).is_ok(),);
+    assert!(bits.write_bits(0b1011_0110, Bits::B3,).is_ok(),);
     assert_eq!(bits.aligned(), false,);
     assert_eq!(bits.to_write(), 2,);
-    assert!(bits.write_bits(0, 2,).is_ok(),);
+    assert!(bits.write_bits(0, Bits::B2,).is_ok(),);
     assert_eq!(bits.aligned(), true,);
     assert_eq!(bits.to_write(), 0,);
-    assert!(bits.write_bits(0b1011, 4,).is_ok(),);
+    assert!(bits.write_bits(0b1011, Bits::B4,).is_ok(),);
     assert_eq!(bits.aligned(), false,);
     assert_eq!(bits.to_write(), 4,);
-    assert!(bits.write_bits(0b01, 2,).is_ok(),);
+    assert!(bits.write_bits(0b01, Bits::B2,).is_ok(),);
     assert_eq!(bits.aligned(), false,);
     assert_eq!(bits.to_write(), 2,);
     assert!(bits.into_inner().is_ok(),);
     assert_eq!(bytes, &[0b1101_1000, 0b1011_0100, 0xAD,][..],);
 
     let mut bits = BitWrite::new([0u8; 0].as_mut(),);
-    assert_eq!(bits.write_bits(0, 0,).ok(), Some(()),);
+    assert_eq!(bits.write_bits(0, Bits::B0,).ok(), Some(()),);
   }
 }
