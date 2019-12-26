@@ -1,203 +1,208 @@
-//! Author --- daniel.bechaz@gmail.com  
-//! Last Moddified --- 2019-11-13
+//! Defines types useful for using individual bits from a byte.
+//! 
+//! Author --- DMorgan  
+//! Last Moddified --- 2019-12-26
 
-use std::{
-  cmp::Ordering,
+use core::{
+  fmt,
+  num::NonZeroU8,
   ops::{
     Deref,
     Add, AddAssign,
     Sub, SubAssign,
-    Mul, MulAssign,
-    Div, DivAssign,
-    Shl, ShlAssign,
-    Shr, ShrAssign,
+    Mul, Div,
   },
-  convert::{TryFrom, AsRef,},
+  cmp::Ordering,
   borrow::Borrow,
+  convert::{AsRef, TryFrom, Infallible,},
 };
 
-/// An enum of the number of possible bits to read at once.
-/// 
-/// Effectivelly a bounded `[u8]`
-#[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Debug,)]
+mod tests;
+
+/// The bits different number of bits making up a byte.
+#[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Hash,)]
 pub enum Bits {
-  /// 0
-  B0 = 0,
   /// 1
   B1 = 1,
   /// 2
-  B2 = 2,
+  B2,
   /// 3
-  B3 = 3,
+  B3,
   /// 4
-  B4 = 4,
+  B4,
   /// 5
-  B5 = 5,
+  B5,
   /// 6
-  B6 = 6,
+  B6,
   /// 7
-  B7 = 7,
+  B7,
   /// 8
-  B8 = 8,
+  B8,
 }
 
 impl Bits {
-  /// The maximum value as a `Bits` value.
-  pub const MAX_BITS: Self = Bits::B8;
-  /// The maximum value as a `[u8]` value.
-  pub const MAX_U8: u8 = Self::MAX_BITS as u8;
-
-  /// Constructs a new `Bits` instance.
+  /// Creates a bit mask which covers the number of low bits.
+  /// 
+  /// This is the inverse of `not_mask`.  
   #[inline]
-  pub fn new(from: u8,) -> Self {
-    use std::convert::TryInto;
-
-    from.try_into().expect(&format!("`u8` value is greater than the maximum of {}", Bits::MAX_U8,),)
+  pub const fn mask(self,) -> u8 { !0 >> (8 - self as u8) }
+  /// Creates a bit mask which covers everything but the number of low bits.
+  /// 
+  /// This is the inverse of `mask`.  
+  #[inline]
+  pub const fn not_mask(self,) -> u8 { !self.mask() }
+  /// Returns the leading zeros of `byte`.
+  /// 
+  /// This is the inverse of `used_bits`.  
+  #[inline]
+  pub const fn unused_bits(byte: u8,) -> Self {
+    unsafe { Self::from_u8(byte.leading_zeros() as u8,) }
   }
+  /// Returns the occupied low bits of `byte`.
+  /// 
+  /// This is the inverse of `unused_bits`.  
+  #[inline]
+  pub const fn used_bits(byte: u8,) -> Self {
+    unsafe { Self::from_u8(Self::B8 as u8 - Self::unused_bits(byte,) as u8,) }
+  }
+  /// Converts a `u8` into a `Bits` value.
+  #[inline]
+  pub const unsafe fn from_u8(byte: u8,) -> Self { core::mem::transmute(byte,) }
+  /// Creates a bit mask which covers exactly this bit.
+  #[inline]
+  pub const fn bit(self,) -> u8 { 1 << (self as u8 - 1) }
+  /// Converts the `Bits` value into a `u8`.
+  #[inline]
+  pub fn as_u8(from: Option<Self>,) -> u8 { from.map(Self::into,).unwrap_or(0,) }
 }
 
 impl PartialEq<u8> for Bits {
   #[inline]
-  fn eq(&self, rhs: &u8,) -> bool { self.as_ref() == rhs }
+  fn eq(&self, rhs: &u8,) -> bool {
+    u8::eq(self, rhs,)
+  }
 }
 
 impl PartialOrd<u8> for Bits {
   #[inline]
-  fn partial_cmp(&self, rhs: &u8,) -> Option<Ordering> { self.as_ref().partial_cmp(rhs,) }
-}
-
-impl PartialEq<Bits> for u8 {
-  #[inline]
-  fn eq(&self, rhs: &Bits,) -> bool { self == rhs.as_ref() }
-}
-
-impl PartialOrd<Bits> for u8 {
-  #[inline]
-  fn partial_cmp(&self, rhs: &Bits,) -> Option<Ordering> { self.partial_cmp(rhs.as_ref(),) }
-}
-
-impl Add<u8> for Bits {
-  type Output = u8;
-
-  #[inline]
-  fn add(self, rhs: u8,) -> u8 { self as u8 + rhs }
-}
-
-impl Sub<u8> for Bits {
-  type Output = u8;
-
-  #[inline]
-  fn sub(self, rhs: u8,) -> u8 { self as u8 - rhs }
-}
-
-impl Mul<u8> for Bits {
-  type Output = u8;
-
-  #[inline]
-  fn mul(self, rhs: u8,) -> u8 { self as u8 * rhs }
-}
-
-impl Div<u8> for Bits {
-  type Output = u8;
-
-  #[inline]
-  fn div(self, rhs: u8,) -> u8 { self as u8 / rhs }
-}
-
-impl Shl<u8> for Bits {
-  type Output = u8;
-
-  #[inline]
-  fn shl(self, rhs: u8,) -> u8 { (self as u8) << rhs }
-}
-
-impl Shr<u8> for Bits {
-  type Output = u8;
-
-  #[inline]
-  fn shr(self, rhs: u8,) -> u8 { self as u8 >> rhs }
-}
-
-impl Add<Bits> for u8 {
-  type Output = u8;
-
-  #[inline]
-  fn add(mut self, rhs: Bits,) -> u8 { self += rhs; self }
-}
-
-impl AddAssign<Bits> for u8 {
-  #[inline]
-  fn add_assign(&mut self, rhs: Bits,) { *self += rhs as u8 }
-}
-
-impl Sub<Bits> for u8 {
-  type Output = u8;
-
-  #[inline]
-  fn sub(mut self, rhs: Bits,) -> u8 { self -= rhs; self }
-}
-
-impl SubAssign<Bits> for u8 {
-  #[inline]
-  fn sub_assign(&mut self, rhs: Bits,) { *self -= rhs as u8 }
-}
-
-impl Mul<Bits> for u8 {
-  type Output = u8;
-
-  #[inline]
-  fn mul(mut self, rhs: Bits,) -> u8 { self *= rhs; self }
-}
-
-impl MulAssign<Bits> for u8 {
-  #[inline]
-  fn mul_assign(&mut self, rhs: Bits,) { *self *= rhs as u8 }
-}
-
-impl Div<Bits> for u8 {
-  type Output = u8;
-
-  #[inline]
-  fn div(mut self, rhs: Bits,) -> u8 { self /= rhs; self }
-}
-
-impl DivAssign<Bits> for u8 {
-  #[inline]
-  fn div_assign(&mut self, rhs: Bits,) { *self /= rhs as u8 }
-}
-
-impl Shl<Bits> for u8 {
-  type Output = u8;
-
-  #[inline]
-  fn shl(mut self, rhs: Bits,) -> u8 { self <<= rhs; self }
-}
-
-impl ShlAssign<Bits> for u8 {
-  #[inline]
-  fn shl_assign(&mut self, rhs: Bits,) { *self <<= rhs as u8 }
-}
-
-impl Shr<Bits> for u8 {
-  type Output = u8;
-
-  #[inline]
-  fn shr(mut self, rhs: Bits,) -> u8 { self >>= rhs; self }
-}
-
-impl ShrAssign<Bits> for u8 {
-  #[inline]
-  fn shr_assign(&mut self, rhs: Bits,) { *self >>= rhs as u8 }
-}
-
-impl TryFrom<u8> for Bits {
-  type Error = u8;
-
-  #[inline]
-  fn try_from(from: u8,) -> Result<Self, Self::Error> {
-    if from > Self::MAX_BITS { Err(from) }
-    else { unsafe { Ok(std::mem::transmute(from,)) } }
+  fn partial_cmp(&self, rhs: &u8,) -> Option<Ordering> {
+    u8::partial_cmp(self, rhs,)
   }
+}
+
+impl<T,> Add<T> for Bits
+  where T: Borrow<Self>, {
+  type Output = Self;
+
+  fn add(mut self, rhs: T,) -> Self::Output {
+    self = unsafe { Self::from_u8(self as u8 + *rhs.borrow() as u8,) };
+
+    debug_assert!((self as u8).wrapping_sub(1,) <= 7, "`Bits` value overflowed",);
+
+    self
+  }
+}
+
+impl<T,> AddAssign<T> for Bits
+  where T: Borrow<Self>, {
+  #[inline]
+  fn add_assign(&mut self, rhs: T,) { *self = *self + *rhs.borrow() }
+}
+
+impl<T,> Sub<T> for Bits
+  where T: Borrow<Self>, {
+  type Output = Self;
+
+  fn sub(mut self, rhs: T,) -> Self::Output {
+    self = unsafe { Self::from_u8(self as u8 - *rhs.borrow() as u8,) };
+
+    debug_assert!((self as u8).wrapping_sub(1,) <= 7, "`Bits` value underflowed",);
+
+    self
+  }
+}
+
+impl<T,> SubAssign<T> for Bits
+  where T: Borrow<Self>, {
+  #[inline]
+  fn sub_assign(&mut self, rhs: T,) { *self = *self - *rhs.borrow() }
+}
+
+impl Add<Option<Self>> for Bits {
+  type Output = Self;
+
+  #[inline]
+  fn add(self, rhs: Option<Self>,) -> Self::Output {
+    <Self as Add>::add(self, unsafe { core::mem::transmute(Self::as_u8(rhs,),) },)
+  }
+}
+
+impl AddAssign<Option<Self>> for Bits {
+  #[inline]
+  fn add_assign(&mut self, rhs: Option<Self>,) {
+    <Self as AddAssign>::add_assign(self, unsafe { core::mem::transmute(Self::as_u8(rhs,),) },)
+  }
+}
+
+impl Sub<Option<Self>> for Bits {
+  type Output = Self;
+
+  #[inline]
+  fn sub(self, rhs: Option<Self>,) -> Self::Output {
+    <Self as Sub>::sub(self, unsafe { core::mem::transmute(Self::as_u8(rhs,),) },)
+  }
+}
+
+impl SubAssign<Option<Self>> for Bits {
+  #[inline]
+  fn sub_assign(&mut self, rhs: Option<Self>,) {
+    <Self as SubAssign>::sub_assign(self, unsafe { core::mem::transmute(Self::as_u8(rhs,),) },)
+  }
+}
+
+impl Add<u8,> for Bits {
+  type Output = u8;
+
+  #[inline]
+  fn add(self, rhs: u8,) -> Self::Output { self as u8 + rhs }
+}
+
+impl Sub<u8,> for Bits {
+  type Output = u8;
+
+  #[inline]
+  fn sub(self, rhs: u8,) -> Self::Output { self as u8 - rhs }
+}
+
+impl Mul<u8,> for Bits {
+  type Output = u8;
+
+  #[inline]
+  fn mul(self, rhs: u8,) -> Self::Output { self as u8 * rhs }
+}
+
+impl Div<u8,> for Bits {
+  type Output = u8;
+
+  #[inline]
+  fn div(self, rhs: u8,) -> Self::Output { self as u8 / rhs }
+}
+
+impl Deref for Bits {
+  type Target = u8;
+
+  #[inline]
+  fn deref(&self,) -> &Self::Target { unsafe { core::mem::transmute(self,) } }
+}
+
+impl AsRef<u8> for Bits {
+  #[inline]
+  fn as_ref(&self,) -> &u8 { &**self }
+}
+
+impl Borrow<u8> for Bits {
+  #[inline]
+  fn borrow(&self,) -> &u8 { &**self }
 }
 
 impl Into<u8> for Bits {
@@ -205,36 +210,40 @@ impl Into<u8> for Bits {
   fn into(self,) -> u8 { self as u8 }
 }
 
-impl AsRef<u8> for Bits {
+impl Into<NonZeroU8> for Bits {
   #[inline]
-  fn as_ref(&self,) -> &u8 {
-    unsafe { std::mem::transmute(self,) }
+  fn into(self,) -> NonZeroU8 { unsafe { core::mem::transmute(self,) } }
+}
+
+impl TryFrom<u8> for Bits {
+  type Error = FromU8Error;
+
+  fn try_from(from: u8,) -> Result<Self, Self::Error> {
+    if from.wrapping_sub(1,) > 7 { return Err(FromU8Error((),)) }
+
+    Ok(unsafe { Self::from_u8(from,) })
   }
 }
 
-impl Borrow<u8> for Bits {
-  #[inline]
-  fn borrow(&self,) -> &u8 {
-    unsafe { std::mem::transmute(self,) }
-  }
+impl fmt::Display for Bits {
+  fn fmt(&self, fmt: &mut fmt::Formatter,) -> fmt::Result { write!(fmt, "B{}", *self as u8,) }
 }
 
-impl Deref for Bits {
-  type Target = u8;
-
+impl fmt::Debug for Bits {
   #[inline]
-  fn deref(&self,) -> &Self::Target {
-    unsafe { std::mem::transmute(self,) }
-  }
+  fn fmt(&self, fmt: &mut fmt::Formatter,) -> fmt::Result { fmt::Display::fmt(self, fmt,) }
 }
 
-#[cfg(test,)]
-mod tests {
-  use super::*;
+/// Error when a `u8` cannot be converted to a [Bits] value.
+#[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Hash,)]
+pub struct FromU8Error(pub(crate) (),);
 
-  #[test]
-  #[allow(non_snake_case,)]
-  fn test_Bits_size() {
-    assert_eq!(std::mem::size_of::<Bits>(), 1, "`Bits` incorrect size",);
-  }
+impl From<!> for FromU8Error {
+  #[inline]
+  fn from(_: !,) -> Self { FromU8Error((),) }
+}
+
+impl From<Infallible> for FromU8Error {
+  #[inline]
+  fn from(_: Infallible,) -> Self { FromU8Error((),) }
 }
