@@ -1,5 +1,5 @@
 //! Author --- DMorgan  
-//! Last Moddified --- 2019-12-26
+//! Last Moddified --- 2019-12-29
 
 use crate::{bits::Bits, UnalignedError,};
 use core::convert::TryFrom;
@@ -128,7 +128,7 @@ impl BitWrite for WriteByte {
         //There are enough bits to fill the buffer.
 
         //Calculate the shift to align the bits with the low bits of the buffer.
-        let shift = bits - to_write as u8;
+        let shift = bits as u8 - to_write as u8;
         //Shift the buffer to align the bits.
         buf >>= shift;
 
@@ -137,7 +137,7 @@ impl BitWrite for WriteByte {
         //There aren't enough bits to fill the buffer.
 
         //Calculate the shift to align the bits with the destination bits of the buffer.
-        let shift = to_write - bits as u8;
+        let shift = to_write as u8 - bits as u8;
         //Shift the buffer to align the bits.
         buf <<= shift;
 
@@ -150,7 +150,7 @@ impl BitWrite for WriteByte {
     //Add the bits to the internal buffer.
     self.buffer ^= buf;
     //Advance the cursor.
-    self.cursor = Bits::try_from(to_write - writing as u8,).ok();
+    self.cursor = Bits::try_from(to_write as u8 - writing as u8,).ok();
 
     Ok(writing as u8)
   }
@@ -233,11 +233,11 @@ impl BitWrite for WriteSlice<'_,> {
     }
 
     //Calculate the bits which are yet to be written.
-    if let Ok(bits) = Bits::try_from(bits - written,) {
+    if let Ok(bits) = Bits::try_from(bits as u8 - written,) {
       //There are unwritten bits.
 
       //The number of bits to be written after these bits.
-      let to_write = Bits::B8 - bits;
+      let to_write = unsafe { Bits::from_u8(8 - bits as u8,) };
       //Store the pending bits.
       *byte = buf << to_write as u8;
       //Update the cursor.

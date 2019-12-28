@@ -1,5 +1,5 @@
 //! Author --- DMorgan  
-//! Last Moddified --- 2019-12-26
+//! Last Moddified --- 2019-12-29
 
 use super::*;
 use std::io::{self, Read, Write, Error,};
@@ -71,7 +71,7 @@ impl<W,> BitWrite for WriteIO<W,>
     }
 
     //Calculate the bits which are yet to be written.
-    if let Ok(bits) = Bits::try_from(bits - written,) {
+    if let Ok(bits) = Bits::try_from(bits as u8 - written,) {
       //There are unwritten bits.
 
       //Write out the remaining bits.

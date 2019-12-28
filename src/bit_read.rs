@@ -1,5 +1,5 @@
 //! Author --- DMorgan  
-//! Last Moddified --- 2019-12-26
+//! Last Moddified --- 2019-12-29
 
 use crate::{UnalignedError, bits::Bits,};
 use core::convert::TryFrom;
@@ -27,6 +27,14 @@ pub trait BitRead {
   /// If an error is returned it could mean that less than a full byte is available.
   #[inline]
   fn read_byte(&mut self,) -> Result<u8, Self::Error> { self.read_bits(Bits::B8,) }
+  /// Reads in bits without returning them.
+  /// 
+  /// # Params
+  /// 
+  /// bits --- The number of bits to read in.  
+  fn skip(&mut self, bits: Bits,) -> Result<&mut Self, Self::Error> {
+    self.read_bits(bits,).map(move |_,| self,)
+  }
   /// Reads several bits from the input at once.
   /// 
   /// The state of the higher bits are not enforced.
@@ -81,7 +89,7 @@ impl ReadByte {
   }
   /// Returns the number of bits left to read.
   #[inline]
-  pub fn to_read(&self,) -> u8 { Bits::as_u8(self.cursor,) }
+  pub const fn to_read(&self,) -> Option<Bits> { self.cursor }
   /// Resets the reader and fills the buffer.
   /// 
   /// # Params
@@ -90,18 +98,6 @@ impl ReadByte {
   pub fn set(&mut self, buffer: u8,) -> &mut Self {
     self.buffer = buffer;
     self.cursor = Some(Bits::B8);
-
-    self
-  }
-  /// Skips some bits cheaply.
-  /// 
-  /// There is no issue with skipping more bits than are in the buffer.
-  /// 
-  /// # Params
-  /// 
-  /// bits --- The number of bits to skip.  
-  pub fn skip(&mut self, bits: Bits,) -> &mut Self {
-    self.cursor = Bits::try_from(Bits::as_u8(self.cursor,).wrapping_sub(bits as u8,),).ok();
 
     self
   }
@@ -116,7 +112,7 @@ impl ReadByte {
 }
 
 impl BitRead for ReadByte {
-  type Error = u8;
+  type Error = Option<Bits>;
 
   #[inline]
   fn is_aligned(&self,) -> bool {
@@ -124,7 +120,7 @@ impl BitRead for ReadByte {
   }
   fn read_bit(&mut self,) -> Result<bool, Self::Error> {
     //Read the bit.
-    let res = self.cursor.ok_or(0,)?.bit() & self.buffer != 0;
+    let res = self.cursor.ok_or(None,)?.bit() & self.buffer != 0;
 
     //Advance the cursor.
     self.cursor = unsafe { core::mem::transmute(Bits::as_u8(self.cursor,) - 1,) };
@@ -140,15 +136,20 @@ impl BitRead for ReadByte {
     //There are not enough bits, return the number of bits available.
     } else { Err(self.to_read()) }
   }
+  fn skip(&mut self, bits: Bits,) -> Result<&mut Self, Self::Error> {
+    self.cursor = Bits::try_from(Bits::as_u8(self.cursor,).wrapping_sub(bits as u8,),).ok();
+
+    Ok(self)
+  }
   fn read_bits(&mut self, bits: Bits,) -> Result<u8, Self::Error> {
     //Get the cursor.
-    let cursor = self.cursor.ok_or(0,)?;
+    let cursor = self.cursor.ok_or(None,)?;
     //The shift applied to the buffer to populate the low bits.
     let shift = {
       //If there are not enough bits available error.
-      if cursor < bits { return Err(cursor as u8) }
+      if cursor < bits { return Err(Some(cursor)) }
 
-      cursor - bits as u8
+      cursor as u8 - bits as u8
     };
 
     //Advance the cursor.
@@ -187,38 +188,7 @@ impl<I,> ReadIter<I,>
   }
   /// Returns the number of bytes left to read before this reader is aligned.
   #[inline]
-  pub fn to_read(&self,) -> u8 { self.buffer.to_read() }
-  /// Skips some bits cheaply.
-  /// 
-  /// There is no issue with skipping more bits than are in the buffer.
-  /// 
-  /// # Params
-  /// 
-  /// bits --- The number of bits to skip.  
-  pub fn skip(&mut self, bits: Bits,) -> &mut Self {
-    //The number of bits currently in the buffer.
-    let available = self.buffer.to_read();
-
-    //Skip the bits in the current buffer.
-    self.buffer.skip(bits,);
-    //If there were enough bits in the buffer stop.
-    if bits <= available { return self }
-
-    //There were not enough bits in the buffer, get the next bit and continue.
-
-    //Repopulate the buffer.
-    match self.iterator.next() {
-      //Populate the buffer.
-      Some(v) => { self.buffer.set(v,); },
-      //There is no more data, stop.
-      None => return self,
-    }
-
-    //Skip the unskipped bits.
-    self.buffer.skip(unsafe { Bits::from_u8(bits - available,) },);
-
-    self
-  }
+  pub fn to_read(&self,) -> Option<Bits> { self.buffer.to_read() }
   /// Unwraps the inner iterator if the reader is aligned.
   pub fn into_iter(self,) -> Result<I, UnalignedError<Self,>> {
     if self.buffer.is_aligned() { Ok(self.iterator) }
@@ -228,10 +198,39 @@ impl<I,> ReadIter<I,>
 
 impl<I,> BitRead for ReadIter<I,>
   where I: Iterator<Item = u8>, {
-  type Error = u8;
+  type Error = Option<Bits>;
 
   #[inline]
   fn is_aligned(&self,) -> bool { self.buffer.is_aligned() }
+  fn skip(&mut self, bits: Bits,) -> Result<&mut Self, Self::Error> {
+    //The number of bits currently in the buffer.
+    let available = self.buffer.to_read().ok_or(None,)?;
+    //The number of bits left to be skipped.
+    let to_skip = {
+      //Skip the bits in the current buffer.
+      self.buffer.skip(bits,).ok();
+
+      //If there were enough bits in the buffer stop.
+      let to_skip = if bits <= available { return Ok(self) }
+        else { bits as u8 - available as u8 };
+      Bits::try_from(to_skip,).ok()
+    };
+
+    //There were not enough bits in the buffer, get the next byte and continue.
+
+    //Repopulate the buffer.
+    match self.iterator.next() {
+      //Populate the buffer.
+      Some(v) => { self.buffer.set(v,); },
+      //There is no more data, stop.
+      None => return Ok(self),
+    }
+
+    //Skip the unskipped bits.
+    if let Some(to_skip) = to_skip { self.buffer.skip(to_skip,).ok(); }
+
+    Ok(self)
+  }
   fn read_bits(&mut self, bits: Bits,) -> Result<u8, Self::Error> {
     //Attempt to read the bits from the buffer, store the number of bits in the buffer if
     //not enough are avaialable.
@@ -243,18 +242,18 @@ impl<I,> BitRead for ReadIter<I,>
     //Read in the next byte.
     let next_byte = self.iterator.next().ok_or(available,)?;
     //The number of bits which need to be read from the next byte.
-    let remaining = unsafe { Bits::from_u8(bits - available,) };
+    let remaining = unsafe { Bits::from_u8(bits as u8 - Bits::as_u8(available,),) };
     //Get the high bits from the current buffer and shift them into the higher bits of
     //the output.
     let high_bits = self.buffer.buffer << remaining as u8;
     //Get the low bits from the next byte.
     let low_bits = {
       //Populate the buffer with the next byte and skip the bits being read now.
-      self.buffer.set(next_byte,).skip(remaining,);
+      self.buffer.set(next_byte,).skip(remaining,).ok();
 
       //Read the bits and shift them into the lower bits of the output.
       //Apply the mask to clear the high bits of the part.
-      (self.buffer.buffer >> (Bits::B8 - remaining) as u8) & remaining.mask()
+      (self.buffer.buffer >> (8 - remaining as u8)) & remaining.mask()
     };
 
     //Combine the bits in the output.

@@ -1,5 +1,5 @@
 //! Author --- DMorgan  
-//! Last Moddified --- 2019-12-26
+//! Last Moddified --- 2019-12-29
 
 use super::*;
 use std::io::{self, Read, Write, ErrorKind, Error,};
@@ -27,7 +27,7 @@ impl<R,> ReadIO<R,>
   }
   /// Returns the number of bytes left to read before this reader is aligned.
   #[inline]
-  pub fn to_read(&self,) -> u8 { self.buffer.to_read() }
+  pub fn to_read(&self,) -> Option<Bits> { self.buffer.to_read() }
   /// Skips some bits cheaply.
   /// 
   /// There is no issue with skipping more bits than are in the buffer.
@@ -37,10 +37,10 @@ impl<R,> ReadIO<R,>
   /// bits --- The number of bits to skip.  
   pub fn skip(&mut self, bits: Bits,) -> Result<&mut Self, Error> {
     //The number of bits currently in the buffer.
-    let available = self.buffer.to_read();
+    let available = Bits::as_u8(self.buffer.to_read(),);
 
     //Skip the bits in the current buffer.
-    self.buffer.skip(bits,);
+    self.buffer.skip(bits,).ok();
     //If there were enough bits in the buffer stop.
     if bits <= available { return Ok(self) }
 
@@ -66,7 +66,7 @@ impl<R,> ReadIO<R,>
     }
 
     //Skip the unskipped bits.
-    self.buffer.skip(unsafe { Bits::from_u8(bits - available,) },);
+    self.buffer.skip(unsafe { Bits::from_u8(bits as u8 - available,) },).ok();
 
     Ok(self)
   }
@@ -80,7 +80,7 @@ impl<R,> ReadIO<R,>
 impl<R,> BitRead for ReadIO<R,>
   where R: Read, {
   /// The number of bytes available to read and the error encountered.
-  type Error = (u8, Error,);
+  type Error = (Option<Bits>, Error,);
 
   #[inline]
   fn is_aligned(&self,) -> bool { self.buffer.is_aligned() }
@@ -105,18 +105,18 @@ impl<R,> BitRead for ReadIO<R,>
       next_byte
     };
     //The number of bits which need to be read from the next byte.
-    let remaining = unsafe { Bits::from_u8(bits - available,) };
+    let remaining = unsafe { Bits::from_u8(bits as u8 - Bits::as_u8(available,),) };
     //Get the high bits from the current buffer and shift them into the higher bits of
     //the output.
     let high_bits = self.buffer.buffer << remaining as u8;
     //Get the low bits from the next byte.
     let low_bits = {
       //Populate the buffer with the next byte and skip the bits being read now.
-      self.buffer.set(next_byte,).skip(remaining,);
+      self.buffer.set(next_byte,).skip(remaining,).ok();
 
       //Read the bits and shift them into the lower bits of the output.
       //Apply the mask to clear the high bits of the part.
-      (self.buffer.buffer >> (Bits::B8 - remaining) as u8) & remaining.mask()
+      (self.buffer.buffer >> (8 - remaining as u8)) & remaining.mask()
     };
 
     //Combine the bits in the output.
