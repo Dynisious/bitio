@@ -203,35 +203,6 @@ impl<I,> BitRead for ReadIter<I,>
 
   #[inline]
   fn is_aligned(&self,) -> bool { self.buffer.is_aligned() }
-  fn skip(&mut self, bits: Bits,) -> Result<&mut Self, Self::Error> {
-    //The number of bits currently in the buffer.
-    let available = self.buffer.to_read().ok_or(None,)?;
-    //The number of bits left to be skipped.
-    let to_skip = {
-      //Skip the bits in the current buffer.
-      self.buffer.skip(bits,).ok();
-
-      //If there were enough bits in the buffer stop.
-      let to_skip = if bits <= available { return Ok(self) }
-        else { bits as u8 - available as u8 };
-      Bits::try_from(to_skip,).ok()
-    };
-
-    //There were not enough bits in the buffer, get the next byte and continue.
-
-    //Repopulate the buffer.
-    match self.iterator.next() {
-      //Populate the buffer.
-      Some(v) => { self.buffer.set(v,); },
-      //There is no more data, stop.
-      None => return Ok(self),
-    }
-
-    //Skip the unskipped bits.
-    if let Some(to_skip) = to_skip { self.buffer.skip(to_skip,).ok(); }
-
-    Ok(self)
-  }
   fn read_bits(&mut self, bits: Bits,) -> Result<u8, Self::Error> {
     //Attempt to read the bits from the buffer, store the number of bits in the buffer if
     //not enough are avaialable.
