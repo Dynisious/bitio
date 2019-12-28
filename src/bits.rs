@@ -51,7 +51,7 @@ impl Bits {
   /// 
   /// This is the inverse of `not_mask`.  
   #[inline]
-  pub const fn mask(self,) -> u8 { !0 >> (8 - self as u8) }
+  pub const fn mask(self,) -> u8 { (!0u8).wrapping_shr(8 - self as u32,) }
   /// Creates a bit mask which covers everything but the number of low bits.
   /// 
   /// This is the inverse of `mask`.  
