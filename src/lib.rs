@@ -11,6 +11,7 @@
 
 #[macro_use]
 extern crate core;
+extern crate alloc;
 
 mod bits;
 mod bit_read;

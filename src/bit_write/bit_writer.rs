@@ -52,33 +52,33 @@ impl<W,> WriteIO<W,>
 
 impl<W,> BitWrite for WriteIO<W,>
   where W: Write, {
-  type Error = (u8, Error,);
+  type Error = (Option<Bits>, Error,);
 
   #[inline]
   fn is_aligned(&self,) -> bool { self.buffer.cursor == Some(Bits::B8) }
-  fn write_bits(&mut self, bits: Bits, buf: u8,) -> Result<u8, Self::Error> {
+  fn write_bits(&mut self, bits: Bits, buf: u8,) -> Result<Bits, Self::Error> {
     //The number of bits written to the internal buffer.
-    let written = self.buffer.write_bits(bits, buf,)?;
+    let written = self.buffer.write_bits(bits, buf,).unwrap();
 
     if self.buffer.to_write() == 0 {
       //The internal buffer has been filled.
 
       //Write out the byte.
       self.writer.write_all(core::slice::from_ref(&self.buffer.buffer,),)
-        .map_err(move |e,| (written, e,),)?;
+        .map_err(move |e,| (Some(written), e,),)?;
       //Reset the internal buffer.
       self.buffer = WriteByte::EMPTY;
     }
 
     //Calculate the bits which are yet to be written.
-    if let Ok(bits) = Bits::try_from(bits as u8 - written,) {
+    if let Ok(bits) = Bits::try_from(bits as u8 - written as u8,) {
       //There are unwritten bits.
 
       //Write out the remaining bits.
-      self.buffer.write_bits(bits, buf,)?;
+      self.buffer.write_bits(bits, buf,).ok();
     }
 
-    Ok(bits as u8)
+    Ok(bits)
   }
 }
 

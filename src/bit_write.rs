@@ -10,6 +10,7 @@ mod bit_writer;
 
 #[cfg(feature = "std",)]
 pub use self::bit_writer::*;
+use alloc::vec::Vec;
 
 /// A trait for bitwise writing.
 pub trait BitWrite {
@@ -27,7 +28,9 @@ pub trait BitWrite {
   /// If an error is returned it could mean that there is not enough space for a full
   /// byte.
   #[inline]
-  fn write_byte(&mut self, byte: u8,) -> Result<u8, Self::Error> { self.write_bits(Bits::B8, byte,) }
+  fn write_byte(&mut self, byte: u8,) -> Result<&mut Self, Self::Error> {
+    self.write_bits(Bits::B8, byte,)?; Ok(self)
+  }
   /// Writes low bits from `buf` to the input in bulk.
   /// 
   /// The state of the higher bits are ignored.
@@ -38,7 +41,7 @@ pub trait BitWrite {
   /// 
   /// bits --- The number of bits to write out.  
   /// buf --- The buffer of bits to write.  
-  fn write_bits(&mut self, bits: Bits, buf: u8,) -> Result<u8, Self::Error>;
+  fn write_bits(&mut self, bits: Bits, buf: u8,) -> Result<Bits, Self::Error>;
 }
 
 impl<W,> BitWrite for &'_ mut W
@@ -49,10 +52,9 @@ impl<W,> BitWrite for &'_ mut W
   fn is_aligned(&self,) -> bool { W::is_aligned(*self,) }
   #[inline]
   fn write_bit(&mut self, bit: bool,) -> Result<bool, Self::Error> { W::write_bit(self, bit,) }
+  fn write_byte(&mut self, byte: u8,) -> Result<&mut Self, Self::Error> { W::write_byte(self, byte,)?; Ok(self) }
   #[inline]
-  fn write_byte(&mut self, byte: u8,) -> Result<u8, Self::Error> { W::write_byte(self, byte,) }
-  #[inline]
-  fn write_bits(&mut self, bits: Bits, buf: u8,) -> Result<u8, Self::Error> { W::write_bits(*self, bits, buf,) }
+  fn write_bits(&mut self, bits: Bits, buf: u8,) -> Result<Bits, Self::Error> { W::write_bits(*self, bits, buf,) }
 }
 
 /// Progressively fill a byte from high bits to low bits.
@@ -96,7 +98,7 @@ impl WriteByte {
 }
 
 impl BitWrite for WriteByte {
-  type Error = !;
+  type Error = u8;
 
   #[inline]
   fn is_aligned(&self,) -> bool {
@@ -116,11 +118,11 @@ impl BitWrite for WriteByte {
 
     Ok(true)
   }
-  fn write_bits(&mut self, bits: Bits, mut buf: u8,) -> Result<u8, Self::Error> {
+  fn write_bits(&mut self, bits: Bits, mut buf: u8,) -> Result<Bits, Self::Error> {
     //Get the number of bits the buffer is expecting to write.
     let to_write = match self.cursor {
       Some(v) => v,
-      None => return Ok(0),
+      None => return Err(0),
     };
     //The number of bits being written to the internal buffer.
     let writing = {
@@ -152,7 +154,7 @@ impl BitWrite for WriteByte {
     //Advance the cursor.
     self.cursor = Bits::try_from(to_write as u8 - writing as u8,).ok();
 
-    Ok(writing as u8)
+    Ok(writing)
   }
 }
 
@@ -181,7 +183,7 @@ impl<'s,> WriteSlice<'s,> {
       slice,
     }
   }
-  /// Returns the number of bits left to write.
+  /// Returns the number of bits left to write before the writer is byte aligned.
   #[inline]
   pub fn to_write(&self,) -> u8 { Bits::as_u8(self.cursor,) }
   /// Unwraps the unfilled portion of the inner slice if the writer is aligned.
@@ -195,15 +197,15 @@ impl<'s,> WriteSlice<'s,> {
 }
 
 impl BitWrite for WriteSlice<'_,> {
-  type Error = !;
+  type Error = u8;
 
   #[inline]
   fn is_aligned(&self,) -> bool {
     self.cursor == Some(Bits::B8) || self.cursor == None
   }
-  fn write_bits(&mut self, bits: Bits, buf: u8,) -> Result<u8, Self::Error> {
+  fn write_bits(&mut self, bits: Bits, buf: u8,) -> Result<Bits, Self::Error> {
     //If the slice is empty stop.
-    if self.slice.is_empty() { return Ok(0) }
+    if self.slice.is_empty() { return Err(0) }
 
     //The length of the slice.
     let len = self.slice.len();
@@ -233,7 +235,7 @@ impl BitWrite for WriteSlice<'_,> {
     }
 
     //Calculate the bits which are yet to be written.
-    if let Ok(bits) = Bits::try_from(bits as u8 - written,) {
+    if let Ok(bits) = Bits::try_from(bits as u8 - written as u8,) {
       //There are unwritten bits.
 
       //The number of bits to be written after these bits.
@@ -245,6 +247,78 @@ impl BitWrite for WriteSlice<'_,> {
     //Update the cursor.
     } else { self.cursor = buffer.cursor.or(Some(Bits::B8),) }
 
-    Ok(bits as u8)
+    Ok(bits)
+  }
+}
+
+/// Progressively fill a `Vec` from high bits to low bits.
+/// 
+/// The slices pointer will be updated as bytes are written.
+#[derive(PartialEq, Eq, Debug, Hash,)]
+pub struct WriteVec {
+  /// The store of bits being written.
+  vec: Vec<u8>,
+  /// The cursor over the next bit to be written.
+  cursor: Option<Bits>,
+}
+
+impl WriteVec {
+  /// Creates a new empty writer.  
+  #[inline]
+  pub const fn new() -> Self { Self { cursor: None, vec: Vec::new(), } }
+  /// Returns the number of bits left to write before the writer is byte aligned.
+  #[inline]
+  pub fn to_write(&self,) -> u8 { Bits::as_u8(self.cursor,) }
+  /// Unwraps the inner `Vec` if the writer is aligned.
+  pub fn into_vec(self,) -> Result<Vec<u8>, UnalignedError<Self,>> {
+    if self.cursor == None { Ok(self.vec) }
+    else { Err(UnalignedError(self,)) }
+  }
+}
+
+impl BitWrite for WriteVec {
+  type Error = !;
+
+  #[inline]
+  fn is_aligned(&self,) -> bool { self.cursor == None }
+  fn write_bits(&mut self, bits: Bits, mut buf: u8,) -> Result<Bits, Self::Error> {
+    use core::cmp::Ordering;
+
+    //Clear the high bits.
+    buf &= bits.mask();
+    //Get the bits left to write in the current byte.
+    let cursor = match self.cursor {
+      Some(v) => v,
+      //If there is no `byte` being written, add one.
+      None => { self.vec.push(buf,); Bits::B8 },
+    };
+    //Get the byte being written.
+    let byte = {
+      let last = self.vec.len() - 1;
+
+      &mut self.vec[last]
+    };
+    let cmp = cursor.cmp(&bits,);
+    
+    if cmp == Ordering::Greater {
+      //We are waiting on more bits to fill this byte.
+
+      //Get the number of bits to shift the input.
+      let shift = cursor as u8 - bits as u8;
+      //Add the input to the byte.
+      *byte ^= buf << shift;
+    } else {
+      //There is enough bits to fill this byte.
+
+      //Get the number of bits to shift the input.
+      let shift = bits as u8 - cursor as u8;
+      //Add the input to the byte.
+      *byte ^= buf >> shift;
+
+      //If there are more bits to write write them.
+      if shift != 0 { self.write_bits(unsafe { Bits::from_u8(shift,) }, buf,)?; }
+    }
+
+    Ok(bits)
   }
 }
