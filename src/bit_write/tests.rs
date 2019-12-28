@@ -55,6 +55,34 @@ fn test_WriteSlice() {
 }
 
 #[allow(non_snake_case,)]
+#[test]
+fn test_WriteVec() {
+  let mut writer = WriteVec::new();
+
+  assert_eq!(writer.to_write(), 0,);
+  assert_eq!(writer.write_bit(true,).ok(), Some(true),);
+  assert_eq!(writer.write_bits(Bits::B3, 0b101,).ok(), Some(Bits::B3),);
+  assert_eq!(writer.write_bits(Bits::B4, 0b0111,).ok(), Some(Bits::B4),);
+  if let Err(e) = writer.into_vec() {
+    panic!("Expected slice, found: {:?}", e,)
+  } else { writer = WriteVec::new() }
+  assert_eq!(writer.write_bits(Bits::B4, 0b1010,).ok(), Some(Bits::B4),);
+  assert_eq!(writer.to_write(), 4,);
+  assert_eq!(writer.write_bits(Bits::B3, 0b001,).ok(), Some(Bits::B3),);
+  match writer.into_vec() {
+    //The conversion failed successfully, return the writer.
+    Err(e) => writer = e.into_inner(),
+    Ok(e) => panic!("Expected error, found: {:?}", e,),
+  }
+  assert!(writer.write_byte(!0,).is_ok(),);
+  assert_eq!(writer.to_write(), 1,);
+  assert_eq!(writer.write_bits(Bits::B3, 0b111,), Ok(Bits::B3),);
+  assert_eq!(writer.to_write(), 6,);
+  assert_eq!(writer.write_bits(Bits::B6, 0,), Ok(Bits::B6),);
+  assert!(writer.into_vec().is_ok(),);
+}
+
+#[allow(non_snake_case,)]
 #[cfg(feature = "std",)]
 #[test]
 fn test_WriteIO() {

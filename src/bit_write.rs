@@ -310,19 +310,23 @@ impl BitWrite for WriteVec {
       //We are waiting on more bits to fill this byte.
 
       //Get the number of bits to shift the input.
-      let shift = cursor as u8 - bits as u8;
+      let shift = unsafe { Bits::from_u8(cursor as u8 - bits as u8,) };
       //Add the input to the byte.
-      *byte ^= buf << shift;
+      *byte ^= buf << shift as u8;
+      //Update the cursor.
+      self.cursor = Some(shift);
     } else {
       //There is enough bits to fill this byte.
 
       //Get the number of bits to shift the input.
-      let shift = bits as u8 - cursor as u8;
-      //Add the input to the byte.
-      *byte ^= buf >> shift;
+      let shift = unsafe { Bits::from_u8(bits as u8 - cursor as u8,) };
+      //Fill the byte.
+      *byte ^= buf >> shift as u8;
+      //Update the cursor.
+      self.cursor = None;
 
       //If there are more bits to write write them.
-      if shift != 0 { self.write_bits(unsafe { Bits::from_u8(shift,) }, buf,)?; }
+      if shift != 0 { self.write_bits(shift, buf,)?; } 
     }
 
     Ok(bits)
