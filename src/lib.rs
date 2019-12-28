@@ -19,11 +19,14 @@ mod bit_write;
 
 pub use self::{bits::*, bit_read::*, bit_write::*,};
 
-/// The error returned when trying to unwrap an unaligned reader.
+/// The error returned when trying to unwrap an unaligned reader/writer.
 #[derive(PartialEq, Eq, Debug, Hash,)]
-pub struct UnalignedError<R,>(pub(crate) R,);
+pub struct UnalignedError<R,>(pub(crate) R, pub(crate) Bits,);
 
 impl<R,> UnalignedError<R,> {
+  /// Return how far from aligned the reader/writer was.
+  #[inline]
+  pub const fn misalign(&self,) -> Bits { self.1 }
   /// Unwraps the reader from the error.
   #[inline]
   pub fn into_inner(self,) -> R { self.0 }

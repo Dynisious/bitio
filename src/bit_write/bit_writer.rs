@@ -40,13 +40,17 @@ impl<W,> WriteIO<W,>
   pub fn clear_buffer(&mut self,) -> WriteByte {
     core::mem::replace(&mut self.buffer, WriteByte::EMPTY,)
   }
-  /// Unwraps the inner writer if the inner buffer is empty and the writter is flushed.
+  /// Unwraps the inner writer if the inner buffer is empty and the writer is flushed.
   /// 
   /// If an unaligned error is returned either write the number of bytes returned by
   /// `to_write` or try `flush`ing or `clear`ing the writer. 
-  pub fn into_writer(self,) -> Result<W, UnalignedError<Self,>> {
-    if self.buffer.cursor == Some(Bits::B8) { Ok(self.writer) }
-    else { Err(UnalignedError(self,)) }
+  pub fn into_writer(mut self,) -> Result<Result<W, Error>, UnalignedError<Self,>> {
+    match self.buffer.cursor {
+      Some(Bits::B8) => Ok(Ok(self.writer)),
+      Some(misalign) => Err(UnalignedError(self, misalign,)),
+      None => if let Err(e) = self.writer.flush() { Ok(Err(e)) }
+        else { Ok(Ok(self.writer)) },
+    }
   }
 }
 

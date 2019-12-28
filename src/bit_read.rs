@@ -102,12 +102,11 @@ impl ReadByte {
     self
   }
   /// Unwraps the inner buffer if the reader is aligned.
-  /// 
-  /// If the buffer has been completly consumed `None` is returned.
-  pub fn into_buffer(self,) -> Result<Option<u8>, UnalignedError<Self,>> {
-    //If the reader is aligned, return the buffer.
-    if self.is_aligned() { Ok(self.cursor.and(Some(self.buffer),)) }
-    else { Err(UnalignedError(self,)) }
+  pub fn into_buffer(self,) -> Result<u8, UnalignedError<Self,>> {
+    match self.cursor {
+      None | Some(Bits::B8) => Ok(self.buffer),
+      Some(misalign) => Err(UnalignedError(self, misalign,)),
+    }
   }
 }
 
@@ -191,8 +190,10 @@ impl<I,> ReadIter<I,>
   pub fn to_read(&self,) -> Option<Bits> { self.buffer.to_read() }
   /// Unwraps the inner iterator if the reader is aligned.
   pub fn into_iter(self,) -> Result<I, UnalignedError<Self,>> {
-    if self.buffer.is_aligned() { Ok(self.iterator) }
-    else { Err(UnalignedError(self,)) }
+    match self.buffer.to_read() {
+      Some(misalign) => Err(UnalignedError(self, misalign,)),
+      None => Ok(self.iterator),
+    }
   }
 }
 

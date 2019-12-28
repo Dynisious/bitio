@@ -91,9 +91,11 @@ impl WriteByte {
   /// 
   /// If the buffer is completly empty `None` is returned.
   pub fn into_buffer(self,) -> Result<Option<u8>, UnalignedError<Self,>> {
-    if self.cursor == None { Ok(Some(self.buffer)) }
-    else if self.cursor == Some(Bits::B8) { Ok(None) }
-    else { Err(UnalignedError(self,)) }
+    match self.cursor {
+      None => Ok(Some(self.buffer)),
+      Some(Bits::B8) => Ok(None),
+      Some(misalign) => Err(UnalignedError(self, misalign,)),
+    }
   }
 }
 
@@ -190,9 +192,11 @@ impl<'s,> WriteSlice<'s,> {
   /// 
   /// If the slice is completly filled `None` is returned.
   pub fn into_slice(self,) -> Result<Option<&'s mut [u8]>, UnalignedError<Self,>> {
-    if self.cursor == Some(Bits::B8) { Ok(Some(self.slice)) }
-    else if self.cursor == None { Ok(None) }
-    else { Err(UnalignedError(self,)) }
+    match self.cursor {
+      None => Ok(None),
+      Some(Bits::B8) => Ok(Some(self.slice)),
+      Some(misalign) => Err(UnalignedError(self, misalign,)),
+    }
   }
 }
 
@@ -271,8 +275,10 @@ impl WriteVec {
   pub fn to_write(&self,) -> u8 { Bits::as_u8(self.cursor,) }
   /// Unwraps the inner `Vec` if the writer is aligned.
   pub fn into_vec(self,) -> Result<Vec<u8>, UnalignedError<Self,>> {
-    if self.cursor == None { Ok(self.vec) }
-    else { Err(UnalignedError(self,)) }
+    match self.cursor {
+      None => Ok(self.vec),
+      Some(misalign) => Err(UnalignedError(self, misalign,))
+    }
   }
 }
 

@@ -21,8 +21,8 @@ fn test_ReadByte() {
   assert!(reader.into_buffer().is_err(),);
   assert_eq!(reader.set(byte,).skip(Bits::B8,).unwrap().read_bits(Bits::B8,), Err(None),);
   assert_eq!(reader.to_read(), None,);
-  assert_eq!(reader.into_buffer(), Ok(None),);
-  assert_eq!(reader.set(byte,).into_buffer(), Ok(Some(byte)),);
+  assert_eq!(reader.into_buffer(), Ok(215),);
+  assert_eq!(reader.set(byte,).into_buffer(), Ok(byte),);
 }
 
 #[allow(non_snake_case,)]

@@ -72,8 +72,10 @@ impl<R,> ReadIO<R,>
   }
   /// Unwraps the inner reader if the inner buffer is empty.
   pub fn into_reader(self,) -> Result<R, UnalignedError<Self,>> {
-    if self.buffer.is_aligned() { Ok(self.reader) }
-    else { Err(UnalignedError(self,)) }
+    match self.buffer.cursor {
+      None => Ok(self.reader),
+      Some(misalign) => Err(UnalignedError(self, misalign,))
+    }
   }
 }
 
