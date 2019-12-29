@@ -217,7 +217,7 @@ impl<I,> BitRead for ReadIter<I,>
     let remaining = unsafe { Bits::from_u8(bits as u8 - Bits::as_u8(available,),) };
     //Get the high bits from the current buffer and shift them into the higher bits of
     //the output.
-    let high_bits = self.buffer.buffer << remaining as u8;
+    let high_bits = self.buffer.buffer.wrapping_shl(remaining as u32,);
     //Get the low bits from the next byte.
     let low_bits = {
       //Populate the buffer with the next byte and skip the bits being read now.
