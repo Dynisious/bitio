@@ -287,16 +287,14 @@ impl BitWrite for WriteVec {
 
   #[inline]
   fn is_aligned(&self,) -> bool { self.cursor == None }
-  fn write_bits(&mut self, bits: Bits, mut buf: u8,) -> Result<Bits, Self::Error> {
+  fn write_bits(&mut self, bits: Bits, buf: u8,) -> Result<Bits, Self::Error> {
     use core::cmp::Ordering;
 
-    //Clear the high bits.
-    buf &= bits.mask();
     //Get the bits left to write in the current byte.
     let cursor = match self.cursor {
       Some(v) => v,
       //If there is no `byte` being written, add one.
-      None => { self.vec.push(buf,); Bits::B8 },
+      None => { self.vec.push(0,); Bits::B8 },
     };
     //Get the byte being written.
     let byte = {
@@ -305,28 +303,28 @@ impl BitWrite for WriteVec {
       &mut self.vec[last]
     };
     let cmp = cursor.cmp(&bits,);
-    
+
     if cmp == Ordering::Greater {
       //We are waiting on more bits to fill this byte.
 
       //Get the number of bits to shift the input.
       let shift = unsafe { Bits::from_u8(cursor as u8 - bits as u8,) };
       //Add the input to the byte.
-      *byte ^= buf << shift as u8;
+      *byte |= (buf & bits.mask()).wrapping_shl(shift as u32,);
       //Update the cursor.
       self.cursor = Some(shift);
     } else {
       //There is enough bits to fill this byte.
 
       //Get the number of bits to shift the input.
-      let shift = unsafe { Bits::from_u8(bits as u8 - cursor as u8,) };
+      let shift = bits as u8 - cursor as u8;
       //Fill the byte.
-      *byte ^= buf >> shift as u8;
+      *byte |= buf.wrapping_shr(shift as u32,);
       //Update the cursor.
       self.cursor = None;
 
       //If there are more bits to write write them.
-      if shift != 0 { self.write_bits(shift, buf,)?; } 
+      if shift != 0 { self.write_bits(unsafe { Bits::from_u8(shift as u8,) }, buf,)?; } 
     }
 
     Ok(bits)

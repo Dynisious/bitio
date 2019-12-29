@@ -79,7 +79,7 @@ fn test_WriteVec() {
   assert_eq!(writer.write_bits(Bits::B3, 0b111,), Ok(Bits::B3),);
   assert_eq!(writer.to_write(), 6,);
   assert_eq!(writer.write_bits(Bits::B6, 0,), Ok(Bits::B6),);
-  assert!(writer.into_vec().is_ok(),);
+  assert_eq!(writer.into_vec().ok(), Some(alloc::vec![0b10100011, 0b11111111, 0b11000000,]),);
 }
 
 #[allow(non_snake_case,)]
@@ -89,7 +89,7 @@ fn test_WriteIO() {
   let mut buffer = [0u8; 2];
   let mut writer = WriteIO::new(buffer.as_mut(),);
 
-  assert_eq!(writer.to_write(), 8,);
+  assert_eq!(writer.to_write(), 0,);
   assert_eq!(writer.write_bit(true,).ok(), Some(true),);
   assert_eq!(writer.write_bits(Bits::B3, 0b101,).ok(), Some(Bits::B3),);
   assert!(writer.write_byte(0b01111010,).is_ok(),);
@@ -97,12 +97,12 @@ fn test_WriteIO() {
   assert_eq!(writer.write_bits(Bits::B3, 0b001,).ok(), Some(Bits::B3),);
   match writer.into_writer() {
     //The conversion failed successfully, return the writer.
-    Err(e) => writer = e.into_inner(),
+    Err(Ok(e)) => writer = e.into_inner(),
     _ => panic!(),
   }
   assert!(writer.write_byte(!0,).is_ok(),);
   assert_eq!(writer.write_bits(Bits::B3, 0b111,).map_err(|e,| e.0,), Err(Some(Bits::B1)),);
   assert_eq!(writer.to_write(), 0,);
   writer.clear_buffer();
-  assert!(writer.into_writer().is_ok(),);
+  assert_eq!(writer.into_writer().ok(), Some(&mut [][..]),);
 }

@@ -26,8 +26,12 @@ impl<W,> WriteIO<W,>
     Self { writer, buffer: WriteByte::EMPTY, }
   }
   /// The number of bytes before the writer is byte aligned.
-  #[inline]
-  pub fn to_write(&self,) -> u8 { self.buffer.to_write() }
+  pub fn to_write(&self,) -> u8 {
+    match self.buffer.cursor {
+      Some(Bits::B8) => 0,
+      cursor => Bits::as_u8(cursor,),
+    }
+  }
   /// Attempts to clear the internal buffer if it is full.
   pub fn flush(&mut self,) -> io::Result<()> {
     match self.buffer.reset() {
@@ -44,12 +48,12 @@ impl<W,> WriteIO<W,>
   /// 
   /// If an unaligned error is returned either write the number of bytes returned by
   /// `to_write` or try `flush`ing or `clear`ing the writer. 
-  pub fn into_writer(mut self,) -> Result<Result<W, Error>, UnalignedError<Self,>> {
+  pub fn into_writer(mut self,) -> Result<W, Result<UnalignedError<Self,>, Error>> {
     match self.buffer.cursor {
-      Some(Bits::B8) => Ok(Ok(self.writer)),
-      Some(misalign) => Err(UnalignedError(self, misalign,)),
-      None => if let Err(e) = self.writer.flush() { Ok(Err(e)) }
-        else { Ok(Ok(self.writer)) },
+      Some(Bits::B8) => Ok(self.writer),
+      Some(misalign) => Err(Ok(UnalignedError(self, misalign,))),
+      None => if let Err(e) = self.writer.flush() { Err(Err(e)) }
+        else { Ok(self.writer) },
     }
   }
 }

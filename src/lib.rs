@@ -9,7 +9,6 @@
 #![feature(const_fn, const_transmute, never_type, try_trait,)]
 #![deny(missing_docs,)]
 
-#[macro_use]
 extern crate core;
 extern crate alloc;
 
