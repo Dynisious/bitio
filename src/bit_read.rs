@@ -20,7 +20,7 @@ pub trait BitRead {
   fn is_aligned(&self,) -> bool;
   /// Reads a single bit from the input.
   fn read_bit(&mut self,) -> Result<bool, Self::Error> {
-    self.read_bits(Bits::B1,).map(#[inline] |b,| b == 1,)
+    self.read_bits(Bits::B1,).map(|b,| b != 0,)
   }
   /// Reads a full byte from the input.
   /// 
