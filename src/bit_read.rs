@@ -154,7 +154,7 @@ impl BitRead for ReadByte {
     //Advance the cursor.
     self.cursor = Bits::try_from(shift,).ok();
 
-    Ok(self.buffer >> shift as u8)
+    Ok(self.buffer.wrapping_shr(shift as u32,))
   }
 }
 
@@ -225,7 +225,7 @@ impl<I,> BitRead for ReadIter<I,>
 
       //Read the bits and shift them into the lower bits of the output.
       //Apply the mask to clear the high bits of the part.
-      (self.buffer.buffer >> (8 - remaining as u8)) & remaining.mask()
+      self.buffer.buffer.wrapping_shr(8 - remaining as u32,) & remaining.mask()
     };
 
     //Combine the bits in the output.

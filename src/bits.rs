@@ -76,7 +76,7 @@ impl Bits {
   pub const unsafe fn from_u8(byte: u8,) -> Self { core::mem::transmute(byte,) }
   /// Creates a bit mask which covers exactly this bit.
   #[inline]
-  pub const fn bit(self,) -> u8 { 1 << (self as u8 - 1) }
+  pub const fn bit(self,) -> u8 { 1u8.wrapping_shl(self as u32 - 1,) }
   /// Converts the `Bits` value into a `u8`.
   #[inline]
   pub fn as_u8(from: Option<Self>,) -> u8 { from.map(|b,| b as u8,).unwrap_or(0,) }

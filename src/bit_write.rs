@@ -245,7 +245,7 @@ impl BitWrite for WriteSlice<'_,> {
       //The number of bits to be written after these bits.
       let to_write = unsafe { Bits::from_u8(8 - bits as u8,) };
       //Store the pending bits.
-      *byte = buf << to_write as u8;
+      *byte = buf.wrapping_shl(to_write as u32,);
       //Update the cursor.
       self.cursor = Some(to_write);
     //Update the cursor.
