@@ -1,7 +1,7 @@
 //! Author --- DMorgan  
 //! Last Moddified --- 2019-12-30
 
-use crate::{UnalignedError, bits::Bits,};
+use crate::{UnalignedError, Bits,};
 use core::{
   convert::TryFrom,
   borrow::Borrow,
@@ -225,7 +225,7 @@ impl<I,> BitRead for ReadIter<I,>
       Err(v) => v,
     };
     //Read in the next byte.
-    let next_byte = self.iterator.next().ok_or(available,)?;
+    let next_byte = *self.iterator.next().ok_or(available,)?.borrow();
     //The number of bits which need to be read from the next byte.
     let remaining = unsafe { Bits::from_u8(bits as u8 - Bits::as_u8(available,),) };
     //Get the high bits from the current buffer and shift them into the higher bits of
@@ -234,11 +234,11 @@ impl<I,> BitRead for ReadIter<I,>
     //Get the low bits from the next byte.
     let low_bits = {
       //Populate the buffer with the next byte and skip the bits being read now.
-      self.buffer.set(*next_byte.borrow(),).skip(remaining,).ok();
+      self.buffer.set(next_byte,).skip(remaining,).ok();
 
       //Read the bits and shift them into the lower bits of the output.
       //Apply the mask to clear the high bits of the part.
-      self.buffer.buffer.wrapping_shr(8 - remaining as u32,) & remaining.mask()
+      self.buffer.buffer.wrapping_shr(8 - remaining as u32,)
     };
 
     //Combine the bits in the output.

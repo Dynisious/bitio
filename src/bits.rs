@@ -12,7 +12,10 @@ use core::{
   convert::{AsRef, TryFrom, Infallible,},
 };
 
+mod iter;
 mod tests;
+
+pub use self::iter::*;
 
 /// The bits different number of bits making up a byte.
 #[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Hash,)]

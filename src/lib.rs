@@ -12,11 +12,11 @@
 extern crate core;
 extern crate alloc;
 
-mod bits;
+pub mod bits;
 mod bit_read;
 mod bit_write;
 
-pub use self::{bits::*, bit_read::*, bit_write::*,};
+pub use self::{bits::Bits, bit_read::*, bit_write::*,};
 
 /// The error returned when trying to unwrap an unaligned reader/writer.
 #[derive(Debug, Hash,)]
