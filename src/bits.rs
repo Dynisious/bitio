@@ -59,16 +59,14 @@ impl Bits {
   /// Returns the leading zeros of `byte`.
   /// 
   /// This is the inverse of `used_bits`.  
-  #[inline]
-  pub const fn unused_bits(byte: u8,) -> Self {
-    unsafe { Self::from_u8(byte.leading_zeros() as u8,) }
+  pub fn unused_bits(byte: u8,) -> Option<Self> {
+    Self::try_from(byte.leading_zeros() as u8,).ok()
   }
   /// Returns the occupied low bits of `byte`.
   /// 
   /// This is the inverse of `unused_bits`.  
-  #[inline]
-  pub const fn used_bits(byte: u8,) -> Self {
-    unsafe { Self::from_u8(Self::B8 as u8 - Self::unused_bits(byte,) as u8,) }
+  pub fn used_bits(byte: u8,) -> Option<Self> {
+    Self::try_from(8 - byte.leading_zeros() as u8,).ok()
   }
   /// Converts a `u8` into a `Bits` value.
   #[inline]
