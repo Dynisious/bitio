@@ -45,8 +45,7 @@ impl Bits {
   /// Returns the reciprocal value of `self`.
   /// 
   /// That is the `Bits` value such that `self + self.recip() == 8`.
-  #[inline]
-  pub const fn recip(self,) -> Self { unsafe { Bits::from_u8(8 - self as u8,) } }
+  pub fn recip(self,) -> Option<Self> { Bits::try_from(8 - self as u8,).ok() }
   /// Creates a bit mask which covers the number of low bits.
   /// 
   /// This is the inverse of `not_mask`.  

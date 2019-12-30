@@ -1,5 +1,5 @@
 //! Author --- DMorgan  
-//! Last Moddified --- 2019-12-29
+//! Last Moddified --- 2019-12-30
 
 #![cfg(test,)]
 
@@ -8,7 +8,7 @@ use super::*;
 #[test]
 fn test_bits() {
   for bit in Bits::BITS.iter().copied() {
-    assert_eq!(bit.recip().recip(), bit, "`recip` is not reciprocal",);
+    assert_eq!(bit.recip().and_then(Bits::recip,).unwrap_or(Bits::B8,), bit, "`recip` is not reciprocal",);
     assert_eq!(8 - bit.mask().leading_zeros(), bit as u32, "`mask` failed on {}", bit,);
     assert_eq!(bit.not_mask().trailing_zeros(), bit as u32, "`not_mask` failed on {}", bit,);
     assert_eq!(Bits::unused_bits(bit.mask(),) as u8, 8 - bit as u8, "`unused_bits` failed on {}", bit,);
