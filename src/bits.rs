@@ -1,7 +1,7 @@
 //! Defines types useful for using individual bits from a byte.
 //! 
 //! Author --- DMorgan  
-//! Last Moddified --- 2019-12-29
+//! Last Moddified --- 2019-12-30
 
 use core::{
   fmt,
@@ -78,7 +78,6 @@ impl Bits {
   #[inline]
   pub const fn bit(self,) -> u8 { 1u8.wrapping_shl(self as u32 - 1,) }
   /// Converts the `Bits` value into a `u8`.
-  #[inline]
   pub fn as_u8(from: Option<Self>,) -> u8 { from.map(|b,| b as u8,).unwrap_or(0,) }
 }
 
@@ -87,9 +86,17 @@ impl PartialEq<u8> for Bits {
   fn eq(&self, rhs: &u8,) -> bool { u8::eq(&self.get(), rhs,) }
 }
 
+impl PartialEq<Option<Bits>> for Bits {
+  fn eq(&self, rhs: &Option<Bits>,) -> bool { u8::eq(&self.get(), &Bits::as_u8(*rhs,),) }
+}
+
 impl PartialOrd<u8> for Bits {
   #[inline]
   fn partial_cmp(&self, rhs: &u8,) -> Option<Ordering> { u8::partial_cmp(&self.get(), rhs,) }
+}
+
+impl PartialOrd<Option<Bits>> for Bits {
+  fn partial_cmp(&self, rhs: &Option<Bits>,) -> Option<Ordering> { u8::partial_cmp(&self.get(), &Bits::as_u8(*rhs,),) }
 }
 
 impl Deref for Bits {
@@ -134,7 +141,7 @@ impl fmt::Debug for Bits {
 }
 
 /// Error when a `u8` cannot be converted to a [Bits] value.
-#[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Hash,)]
+#[derive(PartialEq, Eq, Clone, Copy, Debug,)]
 pub struct FromU8Error(pub(crate) (),);
 
 impl From<!> for FromU8Error {

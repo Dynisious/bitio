@@ -1,5 +1,5 @@
 //! Author --- DMorgan  
-//! Last Moddified --- 2019-12-29
+//! Last Moddified --- 2019-12-30
 
 use crate::{bits::Bits, UnalignedError,};
 use core::convert::TryFrom;
@@ -75,7 +75,7 @@ impl WriteByte {
   pub const fn new() -> Self { Self::EMPTY }
   /// Returns the number of bits left to write.
   #[inline]
-  pub fn to_write(&self,) -> u8 { Bits::as_u8(self.cursor,) }
+  pub fn to_write(&self,) -> Option<Bits> { self.cursor }
   /// If the internal buffer is full its content is returned and the writer reset.
   pub fn reset(&mut self,) -> Option<u8> {
     match self.cursor {
@@ -222,7 +222,7 @@ impl BitWrite for WriteSlice<'_,> {
 
     //Write out the byte.
     *byte = buffer.buffer;
-    if buffer.to_write() == 0 {
+    if buffer.to_write() == None {
       //The internal buffer has been filled.
 
       //Advance the byte pointer.

@@ -1,11 +1,11 @@
 //! Author --- DMorgan  
-//! Last Moddified --- 2019-12-29
+//! Last Moddified --- 2019-12-30
 
 use super::*;
-use std::io::{self, Read, Write, ErrorKind, Error,};
+use std::io::{self, Read, Write, Error,};
 
 /// Wraps an IO reader and reads from it bitwise, high bits first.
-#[derive(Clone, Copy, Debug, Hash,)]
+#[derive(Clone, Copy, Debug,)]
 pub struct ReadIO<R,>
   where R: Read, {
   /// The current byte being read.
@@ -26,50 +26,7 @@ impl<R,> ReadIO<R,>
     Self { reader, buffer: ReadByte::EMPTY, }
   }
   /// Returns the number of bytes left to read before this reader is aligned.
-  #[inline]
-  pub fn to_read(&self,) -> Option<Bits> { self.buffer.to_read() }
-  /// Skips some bits cheaply.
-  /// 
-  /// There is no issue with skipping more bits than are in the buffer.
-  /// 
-  /// # Params
-  /// 
-  /// bits --- The number of bits to skip.  
-  pub fn skip(&mut self, bits: Bits,) -> Result<&mut Self, Error> {
-    //The number of bits currently in the buffer.
-    let available = Bits::as_u8(self.buffer.to_read(),);
-
-    //Skip the bits in the current buffer.
-    self.buffer.skip(bits,).ok();
-    //If there were enough bits in the buffer stop.
-    if bits <= available { return Ok(self) }
-
-    //There were not enough bits in the buffer, get the next bit and continue.
-
-    //Read in the next byte.
-    let next_byte = {
-      let mut next_byte = 0;
-      let next_byte_buf = core::slice::from_mut(&mut next_byte,);
-
-      match self.reader.read_exact(next_byte_buf,) {
-        Ok(_) => Some(next_byte),
-        Err(e) if e.kind() == ErrorKind::UnexpectedEof => None,
-        Err(e) => return Err(e),
-      }
-    };
-    //Repopulate the buffer.
-    match next_byte {
-      //Populate the buffer.
-      Some(v) => { self.buffer.set(v,); },
-      //There is no more data, stop.
-      None => return Ok(self),
-    }
-
-    //Skip the unskipped bits.
-    self.buffer.skip(unsafe { Bits::from_u8(bits as u8 - available,) },).ok();
-
-    Ok(self)
-  }
+  pub fn to_read(&self,) -> Option<Bits> { self.buffer.to_read().filter(|&b,| b != Bits::B8,) }
   /// Unwraps the inner reader if the inner buffer is empty.
   pub fn into_reader(self,) -> Result<R, UnalignedError<Self,>> {
     match self.buffer.cursor {
@@ -95,17 +52,9 @@ impl<R,> BitRead for ReadIO<R,>
       Err(v) => v,
     };
     //Read in the next byte.
-    let next_byte = {
-      //A buffer for the next byte.
-      let mut next_byte = 0;
-      let next_byte_buf = core::slice::from_mut(&mut next_byte,);
+    let mut next_byte = 0;
+    self.reader.read_exact(core::slice::from_mut(&mut next_byte,),).map_err(|e,| (available, e,),)?;
 
-      //Read the byte.
-      self.reader.read_exact(next_byte_buf,)
-      .map_err(move |e,| (available, e,),)?;
-
-      next_byte
-    };
     //The number of bits which need to be read from the next byte.
     let remaining = unsafe { Bits::from_u8(bits as u8 - Bits::as_u8(available,),) };
     //Get the high bits from the current buffer and shift them into the higher bits of
@@ -114,7 +63,7 @@ impl<R,> BitRead for ReadIO<R,>
     //Get the low bits from the next byte.
     let low_bits = {
       //Populate the buffer with the next byte and skip the bits being read now.
-      self.buffer.set(next_byte,).skip(remaining,).ok();
+      self.buffer.set(*next_byte.borrow(),).skip(remaining,).ok();
 
       //Read the bits and shift them into the lower bits of the output.
       //Apply the mask to clear the high bits of the part.

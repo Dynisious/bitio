@@ -1,5 +1,5 @@
 //! Author --- DMorgan  
-//! Last Moddified --- 2019-12-29
+//! Last Moddified --- 2019-12-30
 
 use super::*;
 use std::io::{self, Read, Write, Error,};
@@ -26,12 +26,7 @@ impl<W,> WriteIO<W,>
     Self { writer, buffer: WriteByte::EMPTY, }
   }
   /// The number of bytes before the writer is byte aligned.
-  pub fn to_write(&self,) -> u8 {
-    match self.buffer.cursor {
-      Some(Bits::B8) => 0,
-      cursor => Bits::as_u8(cursor,),
-    }
-  }
+  pub fn to_write(&self,) -> Option<Bits> { self.buffer.cursor.filter(|&b,| b != Bits::B8,) }
   /// Attempts to clear the internal buffer if it is full.
   pub fn flush(&mut self,) -> io::Result<()> {
     match self.buffer.reset() {
@@ -68,7 +63,7 @@ impl<W,> BitWrite for WriteIO<W,>
     //The number of bits written to the internal buffer.
     let written = self.buffer.write_bits(bits, buf,).unwrap();
 
-    if self.buffer.to_write() == 0 {
+    if self.buffer.to_write() == None {
       //The internal buffer has been filled.
 
       //Write out the byte.

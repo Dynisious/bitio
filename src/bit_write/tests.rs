@@ -1,5 +1,5 @@
 //! Author --- DMorgan  
-//! Last Moddified --- 2019-12-29
+//! Last Moddified --- 2019-12-30
 
 #![cfg(test,)]
 
@@ -11,8 +11,8 @@ fn test_WriteByte() {
   let byte = 0b11010111;
   let mut writer = WriteByte::new();
 
-  assert_eq!(writer.to_write(), 8,);
-  assert_eq!(writer.into_buffer(), Ok(None),);
+  assert_eq!(writer.to_write(), Some(Bits::B8),);
+  assert_eq!(writer.into_buffer().ok(), Some(None),);
   assert_eq!(writer.write_bit(true,), Ok(true),);
   assert!(writer.into_buffer().is_err(),);
   assert_eq!(writer.write_bits(Bits::B3, 0b101,), Ok(Bits::B3),);
@@ -21,7 +21,7 @@ fn test_WriteByte() {
   assert_eq!(writer.reset(), Some(byte),);
   assert_eq!(writer.write_bits(Bits::B3, 0b110,), Ok(Bits::B3),);
   assert_eq!(writer.write_bits(Bits::B5, 0b10111,), Ok(Bits::B5),);
-  assert_eq!(writer.into_buffer(), Ok(Some(byte)),);
+  assert_eq!(writer.into_buffer().ok(), Some(Some(byte)),);
 }
 
 #[allow(non_snake_case,)]
@@ -51,7 +51,7 @@ fn test_WriteSlice() {
   assert_eq!(writer.to_write(), 0,);
   assert_eq!(writer.write_bits(Bits::B3, 0b111,), Err(0),);
   assert_eq!(writer.to_write(), 0,);
-  assert_eq!(writer.into_slice(), Ok(None),);
+  assert_eq!(writer.into_slice().ok(), Some(None),);
 }
 
 #[allow(non_snake_case,)]
@@ -89,11 +89,11 @@ fn test_WriteIO() {
   let mut buffer = [0u8; 2];
   let mut writer = WriteIO::new(buffer.as_mut(),);
 
-  assert_eq!(writer.to_write(), 0,);
+  assert_eq!(writer.to_write(), None,);
   assert_eq!(writer.write_bit(true,).ok(), Some(true),);
   assert_eq!(writer.write_bits(Bits::B3, 0b101,).ok(), Some(Bits::B3),);
   assert!(writer.write_byte(0b01111010,).is_ok(),);
-  assert_eq!(writer.to_write(), 4,);
+  assert_eq!(writer.to_write(), Some(Bits::B4),);
   assert_eq!(writer.write_bits(Bits::B3, 0b001,).ok(), Some(Bits::B3),);
   match writer.into_writer() {
     //The conversion failed successfully, return the writer.
@@ -102,7 +102,7 @@ fn test_WriteIO() {
   }
   assert!(writer.write_byte(!0,).is_ok(),);
   assert_eq!(writer.write_bits(Bits::B3, 0b111,).map_err(|e,| e.0,), Err(Some(Bits::B1)),);
-  assert_eq!(writer.to_write(), 0,);
+  assert_eq!(writer.to_write(), None,);
   writer.clear_buffer();
   assert_eq!(writer.into_writer().ok(), Some(&mut [][..]),);
 }

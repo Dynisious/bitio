@@ -17,7 +17,7 @@ fn test_bits() {
     assert_eq!(Bits::as_u8(Some(bit),), bit as u8, "`as_u8` failed on {}", bit,);
   }
   assert_eq!(Bits::as_u8(None,), 0, "`as_u8` failed on `None`",);
-  assert_eq!(Bits::try_from(0,).ok(), None, "`try_from 1` failed",);
-  assert_eq!(Bits::try_from(9,).ok(), None, "`try_from 2` failed",);
-  assert_eq!(Bits::try_from(5,).ok(), Some(Bits::B5), "`try_from 3` failed",);
+  assert_eq!(Bits::try_from(0,), Err(FromU8Error((),)), "`try_from 1` failed",);
+  assert_eq!(Bits::try_from(9,), Err(FromU8Error((),)), "`try_from 2` failed",);
+  assert_eq!(Bits::try_from(5,), Ok(Bits::B5), "`try_from 3` failed",);
 }

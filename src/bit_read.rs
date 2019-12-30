@@ -1,8 +1,11 @@
 //! Author --- DMorgan  
-//! Last Moddified --- 2019-12-29
+//! Last Moddified --- 2019-12-30
 
 use crate::{UnalignedError, bits::Bits,};
-use core::convert::TryFrom;
+use core::{
+  convert::TryFrom,
+  borrow::Borrow,
+};
 
 mod tests;
 #[cfg(feature = "std",)]
@@ -20,7 +23,7 @@ pub trait BitRead {
   fn is_aligned(&self,) -> bool;
   /// Reads a single bit from the input.
   fn read_bit(&mut self,) -> Result<bool, Self::Error> {
-    self.read_bits(Bits::B1,).map(|b,| b != 0,)
+    self.read_bits(Bits::B1,).map(move |b,| (b & Bits::B1.bit()) != 0,)
   }
   /// Reads a full byte from the input.
   /// 
@@ -33,7 +36,7 @@ pub trait BitRead {
   /// 
   /// bits --- The number of bits to read in.  
   fn skip(&mut self, bits: Bits,) -> Result<&mut Self, Self::Error> {
-    self.read_bits(bits,).map(move |_,| self,)
+    self.read_bits(bits,).and(Ok(self),)
   }
   /// Reads several bits from the input at once.
   /// 
@@ -66,25 +69,28 @@ impl<R,> BitRead for &'_ mut R
 }
 
 /// Wraps a byte and reads from it high bits first.
-#[derive(PartialEq, Eq, Clone, Copy, Debug, Hash,)]
-pub struct ReadByte {
+#[derive(PartialEq, Eq, Clone, Copy, Debug,)]
+pub struct ReadByte<B = u8,>
+  where B: Borrow<u8>, {
   /// The bits being read from.
-  buffer: u8,
+  buffer: B,
   /// The cursor over the next bit to be read.
   cursor: Option<Bits>,
 }
 
-impl ReadByte {
+impl ReadByte<u8,> {
   /// An empty reader.
   pub const EMPTY: Self = Self { buffer: 0, cursor: None, };
+}
 
+impl<B,> ReadByte<B,>
+  where B: Borrow<u8>, {
   /// Reads the bits from `buffer`.
   /// 
   /// # Params
   /// 
   /// buffer --- The byte to read bits from.  
-  #[inline]
-  pub const fn new(buffer: u8,) -> Self {
+  pub const fn new(buffer: B,) -> Self {
     Self { cursor: Some(Bits::B8), buffer, }
   }
   /// Returns the number of bits left to read.
@@ -95,14 +101,14 @@ impl ReadByte {
   /// # Params
   /// 
   /// buffer --- The new bits for the buffer.  
-  pub fn set(&mut self, buffer: u8,) -> &mut Self {
+  pub fn set(&mut self, buffer: B,) -> &mut Self {
     self.buffer = buffer;
     self.cursor = Some(Bits::B8);
 
     self
   }
   /// Unwraps the inner buffer if the reader is aligned.
-  pub fn into_buffer(self,) -> Result<u8, UnalignedError<Self,>> {
+  pub fn into_buffer(self,) -> Result<B, UnalignedError<Self,>> {
     match self.cursor {
       None | Some(Bits::B8) => Ok(self.buffer),
       Some(misalign) => Err(UnalignedError(self, misalign,)),
@@ -110,30 +116,35 @@ impl ReadByte {
   }
 }
 
-impl BitRead for ReadByte {
+impl<B,> BitRead for ReadByte<B,>
+  where B: Borrow<u8>, {
   type Error = Option<Bits>;
 
-  #[inline]
   fn is_aligned(&self,) -> bool {
     self.cursor == Some(Bits::B8) || self.cursor == None
   }
   fn read_bit(&mut self,) -> Result<bool, Self::Error> {
+    //Get the bit being read.
+    let cursor = self.cursor.ok_or(None,)?;
     //Read the bit.
-    let res = self.cursor.ok_or(None,)?.bit() & self.buffer != 0;
+    let res = cursor.bit() & *self.buffer.borrow() != 0u8;
 
     //Advance the cursor.
-    self.cursor = unsafe { core::mem::transmute(Bits::as_u8(self.cursor,) - 1,) };
+    self.cursor = Bits::try_from(cursor as u8 - 1,).ok();
 
     Ok(res)
   }
   fn read_byte(&mut self,) -> Result<u8, Self::Error> {
-    //If we are reading an entire byte the cursor must be fresh.
-    if self.cursor == Some(Bits::B8) {
-      self.cursor = None;
+    match self.cursor {
+      //If we are reading an entire byte the cursor must be fresh.
+      Some(Bits::B8) => {
+        self.cursor = None;
 
-      Ok(self.buffer)
-    //There are not enough bits, return the number of bits available.
-    } else { Err(self.to_read()) }
+        Ok(*self.buffer.borrow())
+      },
+      //There are not enough bits, return the number of bits available.
+      remaining => Err(remaining),
+    }
   }
   fn skip(&mut self, bits: Bits,) -> Result<&mut Self, Self::Error> {
     self.cursor = Bits::try_from(Bits::as_u8(self.cursor,).wrapping_sub(bits as u8,),).ok();
@@ -145,7 +156,7 @@ impl BitRead for ReadByte {
     let cursor = self.cursor.ok_or(None,)?;
     //The shift applied to the buffer to populate the low bits.
     let shift = {
-      //If there are not enough bits available error.
+      //If there are not enough bits available, error.
       if cursor < bits { return Err(Some(cursor)) }
 
       cursor as u8 - bits as u8
@@ -154,7 +165,7 @@ impl BitRead for ReadByte {
     //Advance the cursor.
     self.cursor = Bits::try_from(shift,).ok();
 
-    Ok(self.buffer.wrapping_shr(shift as u32,))
+    Ok(self.buffer.borrow().wrapping_shr(shift as u32,))
   }
 }
 
@@ -164,25 +175,26 @@ impl From<u8> for ReadByte {
 }
 
 /// Wraps an iterator of bytes and reads from it bitwise, high bits first.
-#[derive(Clone, Copy, Debug, Hash,)]
+#[derive(Clone, Copy, Debug,)]
 pub struct ReadIter<I,>
-  where I: Iterator<Item = u8>, {
+  where I: Iterator,
+    I::Item: Borrow<u8>, {
   /// The iterator of bytes to read.
   iterator: I,
   /// The current byte being read.
-  buffer: ReadByte,
+  buffer: ReadByte<u8>,
 }
 
 impl<I,> ReadIter<I,>
-  where I: Iterator<Item = u8>, {
+  where I: Iterator,
+    I::Item: Borrow<u8>, {
   /// Constructs a new `ReadIter` over the iterator.
   /// 
   /// # Params
   /// 
   /// iter --- The iterator to read from.  
-  #[inline]
   pub fn new<Iter,>(iter: Iter,) -> Self
-    where Iter: IntoIterator<IntoIter = I, Item = u8>, {
+    where Iter: IntoIterator<IntoIter = I, Item = I::Item>, {
     Self { iterator: iter.into_iter(), buffer: ReadByte::EMPTY, }
   }
   /// Returns the number of bytes left to read before this reader is aligned.
@@ -198,7 +210,8 @@ impl<I,> ReadIter<I,>
 }
 
 impl<I,> BitRead for ReadIter<I,>
-  where I: Iterator<Item = u8>, {
+  where I: Iterator,
+    I::Item: Borrow<u8>, {
   type Error = Option<Bits>;
 
   #[inline]
@@ -221,7 +234,7 @@ impl<I,> BitRead for ReadIter<I,>
     //Get the low bits from the next byte.
     let low_bits = {
       //Populate the buffer with the next byte and skip the bits being read now.
-      self.buffer.set(next_byte,).skip(remaining,).ok();
+      self.buffer.set(*next_byte.borrow(),).skip(remaining,).ok();
 
       //Read the bits and shift them into the lower bits of the output.
       //Apply the mask to clear the high bits of the part.

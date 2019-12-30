@@ -3,7 +3,7 @@
 //! To access [BitReader](./struct.BitReader.html) or `BitWriter` types use `--features std`
 //! 
 //! Author --- DMorgan  
-//! Last Moddified --- 2019-12-29
+//! Last Moddified --- 2019-12-30
 
 #![cfg_attr(not(feature = "std",), no_std,)]
 #![feature(const_fn, const_transmute, never_type, try_trait,)]
@@ -19,7 +19,7 @@ mod bit_write;
 pub use self::{bits::*, bit_read::*, bit_write::*,};
 
 /// The error returned when trying to unwrap an unaligned reader/writer.
-#[derive(PartialEq, Eq, Debug, Hash,)]
+#[derive(Debug, Hash,)]
 pub struct UnalignedError<R,>(pub(crate) R, pub(crate) Bits,);
 
 impl<R,> UnalignedError<R,> {
