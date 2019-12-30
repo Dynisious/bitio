@@ -187,7 +187,7 @@ impl<'s,> WriteSlice<'s,> {
   }
   /// Returns the number of bits left to write before the writer is byte aligned.
   #[inline]
-  pub fn to_write(&self,) -> u8 { Bits::as_u8(self.cursor,) }
+  pub fn to_write(&self,) -> Option<Bits> { self.cursor }
   /// Unwraps the unfilled portion of the inner slice if the writer is aligned.
   /// 
   /// If the slice is completly filled `None` is returned.
@@ -272,7 +272,7 @@ impl WriteVec {
   pub const fn new() -> Self { Self { cursor: None, vec: Vec::new(), } }
   /// Returns the number of bits left to write before the writer is byte aligned.
   #[inline]
-  pub fn to_write(&self,) -> u8 { Bits::as_u8(self.cursor,) }
+  pub fn to_write(&self,) -> Option<Bits> { self.cursor }
   /// Unwraps the inner `Vec` if the writer is aligned.
   pub fn into_vec(self,) -> Result<Vec<u8>, UnalignedError<Self,>> {
     match self.cursor {
@@ -287,9 +287,10 @@ impl BitWrite for WriteVec {
 
   #[inline]
   fn is_aligned(&self,) -> bool { self.cursor == None }
-  fn write_bits(&mut self, bits: Bits, buf: u8,) -> Result<Bits, Self::Error> {
+  fn write_bits(&mut self, bits: Bits, mut buf: u8,) -> Result<Bits, Self::Error> {
     use core::cmp::Ordering;
 
+    buf &= bits.mask();
     //Get the bits left to write in the current byte.
     let cursor = match self.cursor {
       Some(v) => v,
@@ -310,7 +311,7 @@ impl BitWrite for WriteVec {
       //Get the number of bits to shift the input.
       let shift = unsafe { Bits::from_u8(cursor as u8 - bits as u8,) };
       //Add the input to the byte.
-      *byte |= (buf & bits.mask()).wrapping_shl(shift as u32,);
+      *byte |= buf.wrapping_shl(shift as u32,);
       //Update the cursor.
       self.cursor = Some(shift);
     } else {
