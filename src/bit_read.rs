@@ -221,22 +221,27 @@ impl<I,> BitRead for ReadIter<I,>
     };
     //Read in the next byte.
     let next_byte = *self.iterator.next().ok_or(available,)?.borrow();
-    //The number of bits which need to be read from the next byte.
-    let remaining = unsafe { Bits::from_u8(bits as u8 - Bits::as_u8(available,),) };
-    //Get the high bits from the current buffer and shift them into the higher bits of
-    //the output.
-    let high_bits = self.buffer.buffer << remaining as u8;
-    //Get the low bits from the next byte.
-    let low_bits = {
-      //Populate the buffer with the next byte and skip the bits being read now.
-      self.buffer.set(next_byte,).skip(remaining,).ok();
 
-      //Read the bits and shift them into the lower bits of the output.
-      //Apply the mask to clear the high bits of the part.
-      self.buffer.buffer >> (8 - remaining as u8)
-    };
+    //Read the bits.
+    if let Some(available) = available {
+      //The number of bits which need to be read from the next byte.
+      let remaining = unsafe { Bits::from_u8(bits as u8 - available as u8,) };
+      //Get the high bits from the current buffer and shift them into the higher bits of
+      //the output.
+      let high_bits = self.buffer.buffer << remaining as u8;
+      //Get the low bits from the next byte.
+      let low_bits = {
+        //Populate the buffer with the next byte and skip the bits being read now.
+        self.buffer.set(next_byte,).skip(remaining,).ok();
 
-    //Combine the bits in the output.
-    Ok(high_bits | low_bits)
+        //Read the bits and shift them into the lower bits of the output.
+        //Apply the mask to clear the high bits of the part.
+        self.buffer.buffer >> (8 - remaining as u8)
+      };
+
+      //Combine the bits in the output.
+      Ok(high_bits | low_bits)
+    //Reset the byte and continue reading.
+    } else { self.buffer.set(next_byte,).read_bits(bits,) }
   }
 }

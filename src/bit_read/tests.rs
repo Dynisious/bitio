@@ -41,7 +41,7 @@ fn test_ReadIter() {
   assert_eq!(reader.read_bit(), Ok(false),);
   assert_eq!(reader.read_byte(), Ok(byte),);
   assert_eq!(reader.skip(Bits::B3,).expect("Error skipping bits 1",).to_read(), None,);
-  assert_eq!(reader.read_bits(Bits::B3,), Ok(0b11110010),);
+  assert_eq!(reader.read_bits(Bits::B3,), Ok(0b10),);
   assert_eq!(reader.skip(Bits::B3,).expect("Error skipping bits 2").read_bits(Bits::B8,), Err(Some(Bits::B2)),);
   match reader.into_iter() {
     Err(UnalignedError(_, misalign,)) => assert_eq!(misalign, Some(Bits::B2),),
