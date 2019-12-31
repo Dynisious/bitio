@@ -1,5 +1,5 @@
 //! Author --- DMorgan  
-//! Last Moddified --- 2019-12-30
+//! Last Moddified --- 2019-12-31
 
 use crate::{UnalignedError, Bits,};
 use core::{
@@ -16,7 +16,7 @@ pub use self::bit_reader::*;
 
 /// A trait for bitwise reading.
 pub trait BitRead {
-  /// The error type when reading bits.
+  /// The error type when reading bits, should include the number of bits available.
   type Error;
 
   /// Returns `true` if this reader is aligned to a byte.
@@ -36,7 +36,7 @@ pub trait BitRead {
   /// 
   /// bits --- The number of bits to read in.  
   fn skip(&mut self, bits: Bits,) -> Result<&mut Self, Self::Error> {
-    self.read_bits(bits,).and(Ok(self),)
+    self.read_bits(bits,)?; Ok(self)
   }
   /// Reads several bits from the input at once.
   /// 
@@ -69,7 +69,7 @@ impl<R,> BitRead for &'_ mut R
 }
 
 /// Wraps a byte and reads from it high bits first.
-#[derive(PartialEq, Eq, Clone, Copy, Debug,)]
+#[derive(Clone, Copy, Debug,)]
 pub struct ReadByte<B = u8,>
   where B: Borrow<u8>, {
   /// The bits being read from.
@@ -96,7 +96,7 @@ impl<B,> ReadByte<B,>
   /// Returns the number of bits left to read.
   #[inline]
   pub const fn to_read(&self,) -> Option<Bits> { self.cursor }
-  /// Resets the reader and fills the buffer.
+  /// Resets the reader and sets the buffer.
   /// 
   /// # Params
   /// 
@@ -121,7 +121,7 @@ impl<B,> BitRead for ReadByte<B,>
   type Error = Option<Bits>;
 
   fn is_aligned(&self,) -> bool {
-    self.cursor == Some(Bits::B8) || self.cursor == None
+    self.cursor.unwrap_or(Bits::B8,) == Some(Bits::B8)
   }
   fn read_bit(&mut self,) -> Result<bool, Self::Error> {
     //Get the bit being read.
@@ -153,14 +153,9 @@ impl<B,> BitRead for ReadByte<B,>
   }
   fn read_bits(&mut self, bits: Bits,) -> Result<u8, Self::Error> {
     //Get the cursor.
-    let cursor = self.cursor.ok_or(None,)?;
+    let cursor = self.cursor.filter(|&b,| b >= bits,).ok_or(self.cursor,)?;
     //The shift applied to the buffer to populate the low bits.
-    let shift = {
-      //If there are not enough bits available, error.
-      if cursor < bits { return Err(Some(cursor)) }
-
-      cursor as u8 - bits as u8
-    };
+    let shift = cursor as u8 - bits as u8;
 
     //Advance the cursor.
     self.cursor = Bits::try_from(shift,).ok();
@@ -169,9 +164,10 @@ impl<B,> BitRead for ReadByte<B,>
   }
 }
 
-impl From<u8> for ReadByte {
+impl<B,> From<B> for ReadByte<B,>
+  where B: Borrow<u8>, {
   #[inline]
-  fn from(from: u8,) -> Self { Self::new(from,) }
+  fn from(from: B,) -> Self { Self::new(from,) }
 }
 
 /// Wraps an iterator of bytes and reads from it bitwise, high bits first.

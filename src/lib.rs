@@ -11,6 +11,9 @@
 
 extern crate core;
 extern crate alloc;
+#[cfg(test,)]
+#[macro_use]
+extern crate std;
 
 pub mod bits;
 mod bit_read;

@@ -79,6 +79,16 @@ impl Bits {
   pub const fn bit(self,) -> u8 { 1u8.wrapping_shl(self as u32 - 1,) }
   /// Converts the `Bits` value into a `u8`.
   pub fn as_u8(from: Option<Self>,) -> u8 { from.map(|b,| b as u8,).unwrap_or(0,) }
+  /// Returns the smaller of the two values.
+  #[inline]
+  pub fn min(self, rhs: Self,) -> Self {
+    unsafe { core::mem::transmute(u8::min(self as u8, rhs as u8,),) }
+  }
+  /// Returns the larger of the two values.
+  #[inline]
+  pub fn max(self, rhs: Self,) -> Self {
+    unsafe { core::mem::transmute(u8::max(self as u8, rhs as u8,),) }
+  }
 }
 
 impl PartialEq<u8> for Bits {

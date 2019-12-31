@@ -1,8 +1,12 @@
 //! Author --- DMorgan  
-//! Last Moddified --- 2019-12-30
+//! Last Moddified --- 2019-12-31
 
 use crate::{bits::Bits, UnalignedError,};
-use core::convert::TryFrom;
+use core::{
+  fmt,
+  convert::TryFrom,
+  borrow::BorrowMut,
+};
 
 mod tests;
 #[cfg(feature = "std",)]
@@ -14,14 +18,14 @@ use alloc::vec::Vec;
 
 /// A trait for bitwise writing.
 pub trait BitWrite {
-  /// The error type when writing bits.
+  /// The error type when writing bits, should include the number of bits left unwritten.
   type Error;
 
   /// Returns `true` if this writer is aligned to a byte.
   fn is_aligned(&self,) -> bool;
   /// Writes a single bit to the input.
-  fn write_bit(&mut self, bit: bool,) -> Result<bool, Self::Error> {
-    self.write_bits(Bits::B1, bit as u8,).map(|b,| b != 0,)
+  fn write_bit(&mut self, bit: bool,) -> Result<&mut Self, Self::Error> {
+    self.write_bits(Bits::B1, bit as u8,).and(Ok(self),)
   }
   /// Writes a full byte to the input.
   /// 
@@ -51,233 +55,280 @@ impl<W,> BitWrite for &'_ mut W
   #[inline]
   fn is_aligned(&self,) -> bool { W::is_aligned(*self,) }
   #[inline]
-  fn write_bit(&mut self, bit: bool,) -> Result<bool, Self::Error> { W::write_bit(self, bit,) }
+  fn write_bit(&mut self, bit: bool,) -> Result<&mut Self, Self::Error> { W::write_bit(self, bit,)?; Ok(self) }
   fn write_byte(&mut self, byte: u8,) -> Result<&mut Self, Self::Error> { W::write_byte(self, byte,)?; Ok(self) }
   #[inline]
   fn write_bits(&mut self, bits: Bits, buf: u8,) -> Result<Bits, Self::Error> { W::write_bits(*self, bits, buf,) }
 }
 
 /// Progressively fill a byte from high bits to low bits.
-#[derive(PartialEq, Eq, Clone, Copy, Debug, Hash,)]
-pub struct WriteByte {
+#[derive(Clone, Copy, Debug, Default,)]
+pub struct WriteByte<B = u8,>
+  where B: BorrowMut<u8>, {
   /// The store of bits being written.
-  buffer: u8,
+  buffer: B,
   /// The cursor over the next bit to be written.
   cursor: Option<Bits>,
 }
 
-impl WriteByte {
+impl WriteByte<u8,> {
   /// An empty writer.
-  pub const EMPTY: Self = Self { buffer: 0, cursor: Some(Bits::B8), };
+  pub const EMPTY: Self = Self::new(0,);
 
+  /// The internal buffer is returned and the writer reset.
+  pub fn reset(&mut self,) -> u8 {
+    self.cursor = Some(Bits::B8);
+
+    core::mem::replace(&mut self.buffer, 0,)
+  }
+}
+
+impl<B,> WriteByte<B,>
+  where B: BorrowMut<u8>, {
   /// Creates a new empty writer.
-  #[inline]
-  pub const fn new() -> Self { Self::EMPTY }
+  pub const fn new(buffer: B,) -> Self { Self { buffer, cursor: Some(Bits::B8), } }
   /// Returns the number of bits left to write.
   #[inline]
-  pub fn to_write(&self,) -> Option<Bits> { self.cursor }
-  /// If the internal buffer is full its content is returned and the writer reset.
-  pub fn reset(&mut self,) -> Option<u8> {
-    match self.cursor {
-      Some(_) => None,
-      None => {
-        self.cursor = Some(Bits::B8);
-        
-        Some(core::mem::replace(&mut self.buffer, 0,))
-      },
-    }
-  }
+  pub const fn to_write(&self,) -> Option<Bits> { self.cursor }
   /// Unwraps the inner buffer if the writer is aligned.
-  /// 
-  /// If the buffer is completly empty `None` is returned.
-  pub fn into_buffer(self,) -> Result<Option<u8>, UnalignedError<Self,>> {
+  pub fn into_buffer(self,) -> Result<B, UnalignedError<Self,>> {
     match self.cursor {
-      None => Ok(Some(self.buffer)),
-      Some(Bits::B8) => Ok(None),
+      None | Some(Bits::B8) => Ok(self.buffer),
       Some(misalign) => Err(UnalignedError(self, misalign,)),
     }
   }
 }
 
-impl BitWrite for WriteByte {
-  type Error = u8;
+impl<B,> BitWrite for WriteByte<B,>
+  where B: BorrowMut<u8>, {
+  type Error = Bits;
 
   #[inline]
-  fn is_aligned(&self,) -> bool {
-    self.cursor == Some(Bits::B8) || self.cursor == None
-  }
-  fn write_bit(&mut self, bit: bool,) -> Result<bool, Self::Error> {
+  fn is_aligned(&self,) -> bool { self.cursor.unwrap_or(Bits::B8,) == Bits::B8 }
+  fn write_bit(&mut self, bit: bool,) -> Result<&mut Self, Self::Error> {
     //Get the cursor.
     let cursor = match self.cursor {
       Some(v) => v,
-      None => return Ok(false),
+      None => return Err(Bits::B1),
     };
 
     //Set the bit.
-    if bit { self.buffer ^= cursor.bit() }
+    if bit { *self.buffer.borrow_mut() ^= cursor.bit() }
     //Advance the cursor.
     self.cursor = TryFrom::try_from((cursor as u8).wrapping_sub(1,),).ok();
 
-    Ok(true)
+    Ok(self)
   }
   fn write_bits(&mut self, bits: Bits, mut buf: u8,) -> Result<Bits, Self::Error> {
     //Get the number of bits the buffer is expecting to write.
     let to_write = match self.cursor {
       Some(v) => v,
-      None => return Err(0),
-    };
-    //The number of bits being written to the internal buffer.
-    let writing = {
-      if to_write <= bits {
-        //There are enough bits to fill the buffer.
-
-        //Calculate the shift to align the bits with the low bits of the buffer.
-        let shift = bits as u8 - to_write as u8;
-        //Shift the buffer to align the bits.
-        buf >>= shift;
-
-        to_write
-      } else {
-        //There aren't enough bits to fill the buffer.
-
-        //Calculate the shift to align the bits with the destination bits of the buffer.
-        let shift = to_write as u8 - bits as u8;
-        //Shift the buffer to align the bits.
-        buf <<= shift;
-
-        bits
-      }
+      None => return Err(bits),
     };
 
-    //Clear the high bits of the buf.
-    buf &= to_write.mask();
-    //Add the bits to the internal buffer.
-    self.buffer ^= buf;
-    //Advance the cursor.
-    self.cursor = Bits::try_from(to_write as u8 - writing as u8,).ok();
+    //Zero the high bits of the byte.
+    buf &= bits.mask();
+    //Write out the bits.
+    if to_write >= bits {
+      //There is enough space for all of the bits.
 
-    Ok(writing)
+      //Calculate the shift to align the bits.
+      let shift = to_write as u8 - bits as u8;
+
+      //Write the bytes.
+      *self.buffer.borrow_mut() |= buf << shift;
+      //Update the cursor.
+      self.cursor = Bits::try_from(shift,).ok();
+
+      Ok(bits)
+    } else {
+      //There is not enough space for all of the bits.
+
+      //Calculate the number of bits to shift out.
+      let shift = unsafe { Bits::from_u8(bits as u8 - to_write as u8,) };
+      //Write the bytes.
+      *self.buffer.borrow_mut() |= buf >> shift as u8;
+      //Update the cursor.
+      self.cursor = None;
+
+      Err(shift)
+    }
   }
 }
 
 /// Progressively fill a slice from high bits to low bits.
 /// 
 /// The slices pointer will be updated as bytes are written.
-#[derive(PartialEq, Eq, Debug, Hash,)]
-pub struct WriteSlice<'s,> {
+#[derive(Debug,)]
+pub struct WriteSlice<'s, B = u8,>
+  where B: BorrowMut<u8>, {
   /// The store of bits being written.
-  slice: &'s mut [u8],
+  slice: &'s mut [B],
   /// The cursor over the next bit to be written.
-  cursor: Option<Bits>,
+  cursor: Bits,
 }
 
-impl<'s,> WriteSlice<'s,> {
+impl<'s, B,> WriteSlice<'s, B,>
+  where B: BorrowMut<u8>, {
   /// Creates a new empty writer.
   /// 
   /// # Params
   /// 
   /// slice --- The slice to fill.  
-  pub fn new(slice: &'s mut [u8],) -> Self {
-    Self {
-      cursor: Some(Bits::B8)
-        //Clear the cursor if the slice is filled.
-        .filter(|_,| slice.is_empty() == false,),
-      slice,
-    }
-  }
+  pub const fn new(slice: &'s mut [B],) -> Self { Self { cursor: Bits::B8, slice, } }
   /// Returns the number of bits left to write before the writer is byte aligned.
-  #[inline]
-  pub fn to_write(&self,) -> Option<Bits> { self.cursor }
+  pub fn to_write(&self,) -> Option<Bits> {
+    if self.cursor == Bits::B8 { None }
+    else { Some(self.cursor) }
+  }
   /// Unwraps the unfilled portion of the inner slice if the writer is aligned.
   /// 
   /// If the slice is completly filled `None` is returned.
-  pub fn into_slice(self,) -> Result<Option<&'s mut [u8]>, UnalignedError<Self,>> {
-    match self.cursor {
-      None => Ok(None),
-      Some(Bits::B8) => Ok(Some(self.slice)),
+  pub fn into_slice(self,) -> Result<Option<&'s mut [B]>, UnalignedError<Self,>> {
+    match self.cursor { 
+      Bits::B8 => Ok(
+        if self.slice.is_empty() { None }
+        else { Some(self.slice) }
+      ),
+      misalign => Err(UnalignedError(self, misalign,)),
+    }
+  }
+}
+
+impl<B,> BitWrite for WriteSlice<'_, B,>
+  where B: BorrowMut<u8>, {
+  type Error = Bits;
+
+  #[inline]
+  fn is_aligned(&self,) -> bool { self.cursor == Bits::B8 }
+  fn write_bits(&mut self, bits: Bits, buf: u8,) -> Result<Bits, Self::Error> {
+    //Get the byte being written too.
+    let (buffer, slice,) = match unsafe { &mut *(self.slice as *mut [B]) }.split_first_mut() {
+      Some(v) => v,
+      None => return Err(bits),
+    };
+    //Create the byte buffer to write too.
+    let mut buffer = WriteByte { buffer: buffer.borrow_mut(), cursor: Some(self.cursor), };
+
+    //Write the bits out.
+    match buffer.write_bits(bits, buf,) {
+      //Update the cursor.
+      Ok(bits) => {
+        self.cursor = match buffer.cursor {
+          Some(cursor) => cursor,
+          //This byte is filled, advance the slice.
+          None => { self.slice = slice; Bits::B8 },
+        };
+
+        Ok(bits)
+      },
+      //There are more bits to write.
+      Err(to_write) => {
+        self.cursor = Bits::B8;
+        self.slice = slice;
+
+        //Write the remaining bits.
+        self.write_bits(to_write, buf,)
+      },
+    }
+  }
+}
+
+/// Progressively fill a slice from high bits to low bits.
+/// 
+/// The slices pointer will be updated as bytes are written.
+pub struct WriteIter<I,>
+  where I: Iterator,
+    I::Item: BorrowMut<u8>, {
+  /// The iterator of bytes to write too.
+  iter: I,
+  /// The buffer of the byte being written too.
+  buffer: Option<(Bits, I::Item,)>,
+}
+
+impl<I,> WriteIter<I,>
+  where I: Iterator,
+    I::Item: BorrowMut<u8>, {
+  /// Creates a new empty writer.
+  /// 
+  /// # Params
+  /// 
+  /// slice --- The slice to fill.  
+  pub fn new<Iter,>(iter: Iter,) -> Self
+    where Iter: IntoIterator<IntoIter = I, Item = I::Item>, {
+    Self { buffer: None, iter: iter.into_iter(), }
+  }
+  /// Returns the number of bits left to write before the writer is byte aligned.
+  pub fn to_write(&self,) -> Option<Bits> { self.buffer.as_ref().map(|b,| b.0,) }
+  /// Unwraps the unfilled portion of the inner iterator if the writer is aligned.
+  pub fn into_iter(self,) -> Result<I, UnalignedError<Self,>> {
+    match self.to_write() {
+      None => Ok(self.iter),
       Some(misalign) => Err(UnalignedError(self, misalign,)),
     }
   }
 }
 
-impl BitWrite for WriteSlice<'_,> {
-  type Error = u8;
+impl<I,> BitWrite for WriteIter<I,>
+  where I: Iterator,
+    I::Item: BorrowMut<u8>, {  
+  type Error = Bits;
 
   #[inline]
-  fn is_aligned(&self,) -> bool {
-    self.cursor == Some(Bits::B8) || self.cursor == None
-  }
+  fn is_aligned(&self,) -> bool { self.buffer.is_none() }
   fn write_bits(&mut self, bits: Bits, buf: u8,) -> Result<Bits, Self::Error> {
-    //If the slice is empty stop.
-    if self.slice.is_empty() { return Err(0) }
+    //Get the cursor and the byte to populate.
+    let (cursor, mut byte,) = match core::mem::replace(&mut self.buffer, None,) {
+      Some(v) => v,
+      //Get the next byte to populate.
+      None => self.iter.next().map(|b,| (Bits::B8, b,),).ok_or(bits,)?,
+    };
+    //Create the writer to write too.
+    let mut buffer = WriteByte { cursor: Some(cursor), buffer: byte.borrow_mut(), };
 
-    //The length of the slice.
-    let len = self.slice.len();
-    //The byte being written too.
-    let mut byte = &mut self.slice[0];
-    //Create a buffer for the current byte.
-    let mut buffer = WriteByte { cursor: self.cursor, buffer: *byte, };
-    //The number of bits written to the internal buffer.
-    let written = buffer.write_bits(bits, buf,)?;
-
-    //Write out the byte.
-    *byte = buffer.buffer;
-    if buffer.to_write() == None {
-      //The internal buffer has been filled.
-
-      //Advance the byte pointer.
-      byte = unsafe { &mut *(byte as *mut u8).add(1,) };
-      //Advance the inner slice.
-      self.slice = unsafe { core::slice::from_raw_parts_mut(byte, len - 1,) };
-      if self.slice.is_empty() {
-        //The slice is full.
-
-        //Clear the cursor.
-        self.cursor = None;
-        return Ok(written);
-      }
-    }
-
-    //Calculate the bits which are yet to be written.
-    if let Ok(bits) = Bits::try_from(bits as u8 - written as u8,) {
-      //There are unwritten bits.
-
-      //The number of bits to be written after these bits.
-      let to_write = unsafe { Bits::from_u8(8 - bits as u8,) };
-      //Store the pending bits.
-      *byte = buf.wrapping_shl(to_write as u32,);
+    //Write the bits out.
+    match buffer.write_bits(bits, buf,) {
       //Update the cursor.
-      self.cursor = Some(to_write);
-    //Update the cursor.
-    } else { self.cursor = buffer.cursor.or(Some(Bits::B8),) }
+      Ok(bits) => { self.buffer = buffer.cursor.map(move |c,| (c, byte,),); Ok(bits) },
+      //Write the remaining bits.
+      Err(to_write) => self.write_bits(to_write, buf,),
+    }
+  }
+}
 
-    Ok(bits)
+impl<I,> fmt::Debug for WriteIter<I,>
+  where I: Iterator + fmt::Debug,
+    I::Item: BorrowMut<u8> + fmt::Debug, {
+  fn fmt(&self, fmt: &mut fmt::Formatter,) -> fmt::Result {
+    fmt.debug_struct("WriteIter",)
+    .field("iter", &self.iter,)
+    .field("buffer", &self.buffer,)
+    .finish()
   }
 }
 
 /// Progressively fill a `Vec` from high bits to low bits.
 /// 
 /// The slices pointer will be updated as bytes are written.
-#[derive(PartialEq, Eq, Debug, Hash,)]
+#[derive(Clone, Debug,)]
 pub struct WriteVec {
   /// The store of bits being written.
   vec: Vec<u8>,
   /// The cursor over the next bit to be written.
-  cursor: Option<Bits>,
+  cursor: Bits,
 }
 
 impl WriteVec {
   /// Creates a new empty writer.  
   #[inline]
-  pub const fn new() -> Self { Self { cursor: None, vec: Vec::new(), } }
+  pub const fn new() -> Self { Self { cursor: Bits::B8, vec: Vec::new(), } }
   /// Returns the number of bits left to write before the writer is byte aligned.
-  #[inline]
-  pub fn to_write(&self,) -> Option<Bits> { self.cursor }
+  pub fn to_write(&self,) -> Option<Bits> { Some(self.cursor).filter(|&b,| b != Bits::B8,) }
   /// Unwraps the inner `Vec` if the writer is aligned.
   pub fn into_vec(self,) -> Result<Vec<u8>, UnalignedError<Self,>> {
     match self.cursor {
-      None => Ok(self.vec),
-      Some(misalign) => Err(UnalignedError(self, misalign,))
+      Bits::B8 => Ok(self.vec),
+      misalign => Err(UnalignedError(self, misalign,))
     }
   }
 }
@@ -286,48 +337,32 @@ impl BitWrite for WriteVec {
   type Error = !;
 
   #[inline]
-  fn is_aligned(&self,) -> bool { self.cursor == None }
-  fn write_bits(&mut self, bits: Bits, mut buf: u8,) -> Result<Bits, Self::Error> {
-    use core::cmp::Ordering;
+  fn is_aligned(&self,) -> bool { self.cursor == Bits::B8 }
+  fn write_bits(&mut self, bits: Bits, buf: u8,) -> Result<Bits, Self::Error> {
+    //Get the byte to write too.
+    let buffer = if self.cursor == Bits::B8 {
+      //We are starting a new byte.
 
-    buf &= bits.mask();
-    //Get the bits left to write in the current byte.
-    let cursor = match self.cursor {
-      Some(v) => v,
-      //If there is no `byte` being written, add one.
-      None => { self.vec.push(0,); Bits::B8 },
-    };
-    //Get the byte being written.
-    let byte = {
+      let last = self.vec.len();
+      self.vec.push(0,);
+
+      &mut self.vec[last]
+    } else {
+      //We are continuing an old byte.
+
       let last = self.vec.len() - 1;
 
       &mut self.vec[last]
     };
-    let cmp = cursor.cmp(&bits,);
+    //Get the writer to write too.
+    let mut buffer = WriteByte { cursor: Some(self.cursor), buffer, };
 
-    if cmp == Ordering::Greater {
-      //We are waiting on more bits to fill this byte.
-
-      //Get the number of bits to shift the input.
-      let shift = unsafe { Bits::from_u8(cursor as u8 - bits as u8,) };
-      //Add the input to the byte.
-      *byte |= buf.wrapping_shl(shift as u32,);
+    //Write the bits out.
+    match buffer.write_bits(bits, buf,) {
       //Update the cursor.
-      self.cursor = Some(shift);
-    } else {
-      //There is enough bits to fill this byte.
-
-      //Get the number of bits to shift the input.
-      let shift = bits as u8 - cursor as u8;
-      //Fill the byte.
-      *byte |= buf.wrapping_shr(shift as u32,);
-      //Update the cursor.
-      self.cursor = None;
-
-      //If there are more bits to write write them.
-      if shift != 0 { self.write_bits(unsafe { Bits::from_u8(shift as u8,) }, buf,)?; } 
+      Ok(bits) => { self.cursor = buffer.cursor.unwrap_or(Bits::B8,); Ok(bits) },
+      //Write the remaining bits.
+      Err(to_write) => { self.cursor = Bits::B8; self.write_bits(to_write, buf,) },
     }
-
-    Ok(bits)
   }
 }
