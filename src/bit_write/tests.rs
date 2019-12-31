@@ -61,6 +61,41 @@ fn test_WriteSlice() {
 
 #[allow(non_snake_case,)]
 #[test]
+fn test_WriteIter() {
+  let mut buffer = [0u8; 2];
+  let mut writer = WriteIter::new(buffer.as_mut().iter_mut(),);
+
+  assert_eq!(writer.to_write(), None,);
+  assert!(writer.write_bit(true,).is_ok(),);
+  assert_eq!(writer.write_bits(Bits::B3, 0b111101,).ok(), Some(Bits::B3),);
+  assert_eq!(writer.write_bits(Bits::B4, 0b0110111,).ok(), Some(Bits::B4),);
+  match writer.into_iter() {
+    //The conversion succeeded, return the writer.
+    Ok(mut iter) => assert_eq!((iter.next(), iter.next(),), (Some(&mut 0), None,),),
+    e => panic!("Expected iterator, found: {:?}", e,),
+  }
+
+  for b in buffer.iter_mut() { *b = 0 }
+  let mut writer = WriteIter::new(buffer.as_mut().iter_mut(),);
+  assert_eq!(writer.write_bits(Bits::B4, 0b1011010,).ok(), Some(Bits::B4),);
+  assert_eq!(writer.to_write(), Some(Bits::B4),);
+  assert_eq!(writer.write_bits(Bits::B3, 0b10001,).ok(), Some(Bits::B3),);
+  match writer.into_iter() {
+    //The conversion failed successfully, return the writer.
+    Err(e) => writer = e.into_inner(),
+    e => panic!("Expected error, found: {:?}", e,),
+  }
+  assert!(dbg!(&mut writer).write_byte(!0,).is_ok(),);
+  assert_eq!(writer.to_write(), Some(Bits::B1),);
+  assert_eq!(writer.write_bits(Bits::B3, 0b111,), Err(Bits::B2),);
+  assert_eq!(writer.to_write(), None,);
+  assert_eq!(writer.write_byte(0,).err(), Some(Bits::B8),);
+  assert_eq!(writer.into_iter().ok().map(|mut iter,| iter.next(),), Some(None),);
+  assert_eq!(buffer, [0b10100011, 0b11111111,],);
+}
+
+#[allow(non_snake_case,)]
+#[test]
 fn test_WriteVec() {
   let mut writer = WriteVec::new();
 

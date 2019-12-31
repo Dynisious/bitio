@@ -6,7 +6,7 @@
 //! Last Moddified --- 2019-12-30
 
 #![cfg_attr(not(feature = "std",), no_std,)]
-#![feature(const_fn, const_transmute, never_type, try_trait,)]
+#![feature(const_fn, const_transmute, never_type, try_trait, nll,)]
 #![deny(missing_docs,)]
 
 extern crate core;

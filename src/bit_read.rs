@@ -213,8 +213,7 @@ impl<I,> BitRead for ReadIter<I,>
   #[inline]
   fn is_aligned(&self,) -> bool { self.buffer.is_aligned() }
   fn read_bits(&mut self, bits: Bits,) -> Result<u8, Self::Error> {
-    //Attempt to read the bits from the buffer, store the number of bits in the buffer if
-    //not enough are avaialable.
+    //Attempt to read the bits from the buffer.
     let available = match self.buffer.read_bits(bits,) {
       //Return the bits read.
       Ok(v) => return Ok(v),
@@ -226,7 +225,7 @@ impl<I,> BitRead for ReadIter<I,>
     let remaining = unsafe { Bits::from_u8(bits as u8 - Bits::as_u8(available,),) };
     //Get the high bits from the current buffer and shift them into the higher bits of
     //the output.
-    let high_bits = self.buffer.buffer.wrapping_shl(remaining as u32,);
+    let high_bits = self.buffer.buffer << remaining as u8;
     //Get the low bits from the next byte.
     let low_bits = {
       //Populate the buffer with the next byte and skip the bits being read now.
@@ -234,10 +233,10 @@ impl<I,> BitRead for ReadIter<I,>
 
       //Read the bits and shift them into the lower bits of the output.
       //Apply the mask to clear the high bits of the part.
-      self.buffer.buffer.wrapping_shr(8 - remaining as u32,)
+      self.buffer.buffer >> (8 - remaining as u8)
     };
 
     //Combine the bits in the output.
-    Ok(high_bits ^ low_bits)
+    Ok(high_bits | low_bits)
   }
 }
