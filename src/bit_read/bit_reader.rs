@@ -27,6 +27,14 @@ impl<R,> ReadIO<R,>
   }
   /// Returns the number of bytes left to read before this reader is aligned.
   pub fn to_read(&self,) -> Option<Bits> { self.buffer.to_read().filter(|&b,| b != Bits::B8,) }
+  /// Clears the internal byte buffer so that this reader is aligned.
+  pub fn clear_buf(&mut self,) -> &mut Self {
+    if let Some(bits) = self.buffer.to_read() {
+      self.buffer.skip(bits,)
+    }
+
+    self
+  }
   /// Unwraps the inner reader if the inner buffer is empty.
   pub fn into_reader(self,) -> Result<R, UnalignedError<Self,>> {
     match self.buffer.cursor {

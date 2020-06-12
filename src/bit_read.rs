@@ -107,6 +107,14 @@ impl<B,> ReadByte<B,>
 
     self
   }
+  /// Clears the internal byte buffer so that this reader is aligned.
+  pub fn clear_buf(&mut self,) -> &mut Self {
+    if let Some(bits) = self.to_read() {
+      self.skip(bits,).ok();
+    }
+
+    self
+  }
   /// Unwraps the inner buffer if the reader is aligned.
   pub fn into_buffer(self,) -> Result<B, UnalignedError<Self,>> {
     match self.cursor {
@@ -196,6 +204,14 @@ impl<I,> ReadIter<I,>
   /// Returns the number of bytes left to read before this reader is aligned.
   #[inline]
   pub fn to_read(&self,) -> Option<Bits> { self.buffer.to_read() }
+  /// Clears the internal byte buffer so that this reader is aligned.
+  pub fn clear_buf(&mut self,) -> &mut Self {
+    if let Some(bits) = self.to_read() {
+      self.skip(bits,).ok();
+    }
+
+    self
+  }
   /// Unwraps the inner iterator if the reader is aligned.
   pub fn into_iter(self,) -> Result<I, UnalignedError<Self,>> {
     match self.buffer.to_read() {

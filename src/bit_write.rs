@@ -90,6 +90,14 @@ impl<B,> WriteByte<B,>
   /// Returns the number of bits left to write.
   #[inline]
   pub const fn to_write(&self,) -> Option<Bits> { self.cursor }
+  /// Pads the internal buffer with zeros so that the writer is aligned.
+  pub fn pad_zeros(&mut self,) -> &mut Self {
+    if let Some(bits) = self.to_write() {
+      self.write_bits(bits, 0,).ok();
+    }
+
+    self
+  }
   /// Unwraps the inner buffer if the writer is aligned.
   pub fn into_buffer(self,) -> Result<B, UnalignedError<Self,>> {
     match self.cursor {
@@ -181,11 +189,19 @@ impl<'s, B,> WriteSlice<'s, B,>
     if self.cursor == Bits::B8 { None }
     else { Some(self.cursor) }
   }
+  /// Pads the internal buffer with zeros so that the writer is aligned.
+  pub fn pad_zeros(&mut self,) -> &mut Self {
+    if let Some(bits) = self.to_write() {
+      self.write_bits(bits, 0,).ok();
+    }
+
+    self
+  }
   /// Unwraps the unfilled portion of the inner slice if the writer is aligned.
   /// 
   /// If the slice is completly filled `None` is returned.
   pub fn into_slice(self,) -> Result<Option<&'s mut [B]>, UnalignedError<Self,>> {
-    match self.cursor { 
+    match self.cursor {
       Bits::B8 => Ok(
         if self.slice.is_empty() { None }
         else { Some(self.slice) }
@@ -260,6 +276,14 @@ impl<I,> WriteIter<I,>
   }
   /// Returns the number of bits left to write before the writer is byte aligned.
   pub fn to_write(&self,) -> Option<Bits> { self.buffer.as_ref().map(|b,| b.0,) }
+  /// Pads the internal buffer with zeros so that the writer is aligned.
+  pub fn pad_zeros(&mut self,) -> &mut Self {
+    if let Some(bits) = self.to_write() {
+      self.write_bits(bits, 0,).ok();
+    }
+
+    self
+  }
   /// Unwraps the unfilled portion of the inner iterator if the writer is aligned.
   pub fn into_iter(self,) -> Result<I, UnalignedError<Self,>> {
     match self.to_write() {
@@ -324,6 +348,14 @@ impl WriteVec {
   pub const fn new() -> Self { Self { cursor: Bits::B8, vec: Vec::new(), } }
   /// Returns the number of bits left to write before the writer is byte aligned.
   pub fn to_write(&self,) -> Option<Bits> { Some(self.cursor).filter(|&b,| b != Bits::B8,) }
+  /// Pads the internal buffer with zeros so that the writer is aligned.
+  pub fn pad_zeros(&mut self,) -> &mut Self {
+    if let Some(bits) = self.to_write() {
+      self.write_bits(bits, 0,).ok();
+    }
+
+    self
+  }
   /// Unwraps the inner `Vec` if the writer is aligned.
   pub fn into_vec(self,) -> Result<Vec<u8>, UnalignedError<Self,>> {
     match self.cursor {

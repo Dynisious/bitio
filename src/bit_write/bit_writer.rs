@@ -27,6 +27,14 @@ impl<W,> WriteIO<W,>
   }
   /// The number of bytes before the writer is byte aligned.
   pub fn to_write(&self,) -> Option<Bits> { self.buffer.to_write().filter(|&b,| b != Bits::B8,) }
+  /// Pads the internal buffer with zeros so that the writer is aligned.
+  pub fn pad_zeros(&mut self,) -> &mut Self {
+    if let Some(bits) = self.to_write() {
+      self.write_bits(bits, 0,).ok();
+    }
+
+    self
+  }
   /// Attempts to clear the internal buffer if it is full.
   pub fn flush(&mut self,) -> io::Result<&mut Self> {
     if self.buffer.cursor == None {
